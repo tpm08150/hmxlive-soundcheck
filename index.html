@@ -220,7 +220,21 @@ document.getElementById('nameForm').addEventListener('submit',e=>{
 });
 
 const K={};
+/** True while the keystroke belongs to something being typed into. */
+function typingInto(e){
+  const el=e.target;
+  if(!el) return false;
+  const tag=el.tagName;
+  return tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||el.isContentEditable;
+}
+
 addEventListener('keydown',e=>{
+  // Anything aimed at a text field is none of the game's business. A target
+  // check rather than a game-state one, because every shortcut here is a
+  // single letter and any of them can eat a character out of a name — M
+  // toggling the music mid-name is exactly what happened in Out Run.
+  if(typingInto(e)) return;
+
   // Name entry is the HTML overlay, not the canvas — see showNameEntry(). The
   // keyboard still has to be swallowed while it is up, or typing "SAM" walks
   // and jumps the player around behind the dialog.
