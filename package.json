@@ -1,0 +1,10 @@
+{
+  "name": "hmxlive-soundcheck",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "HMXLive Soundcheck — live event production platformer with a shared leaderboard",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

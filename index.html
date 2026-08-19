@@ -1,0 +1,2168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HMXLive Soundcheck — A2 Simulator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bungee&family=IBM+Plex+Mono:wght@400;600&display=swap');
+  :root{
+    --deck:#151A21; --truss:#8B94A3; --tape:#E8E337;
+    --xlr:#3FBF8F; --clip:#FF4D3D; --house:#0A0C10;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--house);color:var(--truss);
+    font-family:'IBM Plex Mono',monospace;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;
+    background-image:
+      repeating-linear-gradient(90deg,rgba(139,148,163,.05) 0 1px,transparent 1px 40px),
+      repeating-linear-gradient(0deg,rgba(139,148,163,.05) 0 1px,transparent 1px 40px);
+  }
+  .rig{width:100%;max-width:1260px}
+  .stage{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+  .play{flex:1;min-width:0}
+  .side{width:210px;flex:0 0 210px;border:2px solid var(--truss);
+    background:#0E1218;padding:10px 10px 12px}
+  .side h2{font-family:'Bungee',cursive;font-size:12px;color:var(--tape);
+    letter-spacing:.5px;margin-bottom:2px}
+  .side .mode{font-size:8.5px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--truss);opacity:.55;margin-bottom:8px}
+  .side .mode.live{color:var(--xlr);opacity:.9}
+  .side ol{list-style:none;font-size:10.5px;line-height:1.9}
+  .side li{display:flex;gap:6px;align-items:baseline;
+    border-bottom:1px solid rgba(139,148,163,.10);padding:1px 0}
+  .side li .r{color:#39424F;width:15px;flex:0 0 15px;text-align:right}
+  .side li .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .side li .s{color:var(--tape);font-weight:600}
+  .side li.p1 .n{color:var(--xlr)}
+  .side li.p2 .n,.side li.p3 .n{color:#8B94A3}
+  .side li.me{background:rgba(232,227,55,.10)}
+  .side li.me .n{color:var(--tape)}
+  .side .empty{font-size:9.5px;color:#39424F;line-height:1.7;padding-top:4px}
+  .side .yours{margin-top:10px;padding-top:8px;border-top:1px solid rgba(139,148,163,.2);
+    font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--truss);opacity:.7}
+  .side .yours b{color:var(--tape);font-size:13px;display:block;margin-top:2px}
+  @media (max-width:900px){
+    .stage{flex-direction:column}
+    .side{width:100%;flex:0 0 auto}
+    .side ol{columns:2;column-gap:16px}
+  }
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+    border-bottom:2px solid var(--truss);padding-bottom:8px;margin-bottom:10px}
+  h1{font-family:'Bungee',cursive;font-size:clamp(15px,2.6vw,25px);
+    color:var(--tape);letter-spacing:.5px;line-height:1;white-space:nowrap}
+  h1 .brand{color:var(--xlr)}
+  .sub{font-size:11px;text-transform:uppercase;letter-spacing:2px;opacity:.6}
+  .meters{margin-left:auto;display:flex;gap:14px;font-size:11px;text-transform:uppercase;letter-spacing:1px}
+  .meters b{color:var(--tape);font-weight:600}
+  canvas{display:block;width:100%;height:auto;background:#0E1218;
+    border:2px solid var(--truss);image-rendering:pixelated;touch-action:none}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px;
+    font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;opacity:.65}
+  .legend span b{color:var(--xlr)}
+  /* Lives inside .stage, between the canvas and the leaderboard, so a phone
+     puts the controls under the play area rather than at the foot of the page.
+     flex-basis:100% makes it take a whole line: on a wide touch screen the
+     canvas and the board still sit side by side and the pad drops beneath
+     them, and .stage's own gap handles the spacing. */
+  .touch{display:none;gap:8px;flex-basis:100%;width:100%}
+  .touch button{flex:1;padding:16px 0;background:var(--deck);color:var(--truss);
+    border:2px solid var(--truss);font-family:'Bungee',cursive;
+    font-size:clamp(10px,3vw,14px);white-space:nowrap;
+    border-radius:2px;user-select:none;-webkit-user-select:none}
+  .touch button:active{background:var(--tape);color:var(--house)}
+  @media(hover:none) and (pointer:coarse){.touch{display:flex}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="rig">
+  <header>
+    <h1><span class="brand">HMXLive</span> Soundcheck</h1>
+    <div class="sub">A2 / Stage Left</div>
+    <div class="meters">
+      <div>Show <b id="lvl">1</b></div>
+      <div>Time <b id="clock">60</b></div>
+      <div>Score <b id="score">0</b></div>
+      <div>Task <b id="task">—</b></div>
+      <div>Carry <b id="carry">0</b></div>
+      <div>Life <b id="hp">♥♥♥</b></div>
+    </div>
+  </header>
+  <div class="stage">
+    <div class="play">
+      <canvas id="c" width="960" height="480"></canvas>
+    </div>
+  <div class="touch">
+    <button id="bL">◀</button><button id="bX">PUNCH</button><button id="bJ">JUMP</button><button id="bR">▶</button>
+  </div>
+    <aside class="side">
+      <h2>TOP 10</h2>
+      <div class="mode" id="bmode">connecting…</div>
+      <ol id="blist"></ol>
+      <div class="yours">This run<b id="brun">0</b></div>
+    </aside>
+  </div>
+  <div class="legend">
+    <span><b>← →</b> walk</span>
+    <span><b>SPACE / ↑</b> jump</span>
+    <span><b>↑ ↓ on truss</b> climb</span>
+    <span><b>Grab cabs ▸ haul to the motor ▸ fly the array ▸ get to FOH</b></span>
+    <span><b>Ride the scissor lifts</b></span>
+    <span><b>Duck under a deck to break a beam</b></span>
+    <span><b>Union 15 means everybody sits — including you</b></span>
+    <span><b>X</b> punch — drop a drunk guest</span>
+    <span><b>Grab the energy drink to go untouchable</b></span>
+    <span><b>1UP hearts</b> — one per show, random spot</span>
+    <span><b>R</b> reset</span>
+    <span><b>60s per level</b> — time + lives = score</span>
+    <span><b>M</b> change track</span>
+  </div>
+</div>
+
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+const W=960,H=480,G=0.22;          // lower gravity = higher, slower arc
+const JUMP=8.9;
+const K={};
+addEventListener('keydown',e=>{
+  // Name entry swallows the keyboard — otherwise typing "SAM" would jump
+  // and walk the player around behind the dialog.
+  if(boardState==='entry'){
+    e.preventDefault();
+    if(e.key==='Backspace'){nameBuf=nameBuf.slice(0,-1);return;}
+    if(e.key==='Enter'){
+      const nm=(nameBuf.trim()||'ANON').slice(0,12);
+      boardSave({name:nm,score:score,lvl:lvl+1,when:Date.now()}).then(sideRender);
+      return;
+    }
+    if(e.key&&e.key.length===1&&nameBuf.length<12&&/[A-Za-z0-9 ._-]/.test(e.key)){
+      nameBuf+=e.key.toUpperCase();
+    }
+    return;
+  }
+  K[e.code]=1;
+  musicStart();
+  if(e.code==='KeyM'){musicToggle();return;}
+  if(['Space','ArrowUp','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+  // R mid-play restarts the run from the current level. It must NOT fire on
+  // the death screen: that path is owned by step(), which sends you back to
+  // show 1. This handler runs first, so without the state check it would
+  // reload the level you died on and step() would never see state==='dead'.
+  if(e.code==='KeyR'&&state==='play'){hp=3;score=0;lastBreak=null;load(lvl);}});
+addEventListener('keyup',e=>K[e.code]=0);
+const bind=(id,code)=>{const b=document.getElementById(id);
+  ['touchstart','mousedown'].forEach(ev=>b.addEventListener(ev,e=>{e.preventDefault();musicStart();K[code]=1}));
+  ['touchend','mouseup','mouseleave'].forEach(ev=>b.addEventListener(ev,e=>{e.preventDefault();K[code]=0}));};
+bind('bL','ArrowLeft');bind('bR','ArrowRight');bind('bJ','Space');bind('bX','KeyX');
+
+let AC=null;
+function beep(f,d,type='square',v=.08){
+  try{
+    if(!AC)AC=new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(),g=AC.createGain();
+    o.type=type;o.frequency.value=f;g.gain.value=v;
+    o.connect(g);g.connect(AC.destination);o.start();
+    g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);
+    o.stop(AC.currentTime+d);
+  }catch(e){}
+}
+function riff(){
+  duck(0.14,1100);
+  const n=[261.6,329.6,392,523.3,392,329.6,523.3,659.3];
+  n.forEach((f,i)=>setTimeout(()=>beep(f,.28,'sawtooth',.06),i*110));
+}
+
+/* ── CHIPTUNE ENGINE ─────────────────────────────────────────────
+   An original jazz-funk loop written for this game. Four voices:
+   bass (pulse), chords (stabs), lead (melody), drums (noise+sine).
+   Look-ahead scheduler: a timer queues notes slightly ahead of the
+   clock so timing doesn't depend on frame rate.
+   ───────────────────────────────────────────────────────────────── */
+const MUS={on:0,timer:null,step:0,next:0,bus:null,started:0,dist:null,track:0};
+
+const E1=41.20,E2=82.41,F2=87.31,G2=98.00,A2=110.00,Bb2=116.54,B2=123.47,C3=130.81,D3=146.83;
+const D2=73.42,Eb2=77.78,Gb2=92.50,Ab2=103.83,Db3=138.59,Eb3=155.56,F3=174.61,G3=196.00,A3=220.00;
+
+/* ── TRACK 1: "LOAD-IN" — fast chip-metal ──────────────────────────
+   E Phrygian (E F G A B C D) — the b2 is what makes it evil.
+   riff = low chug, one entry per 16th. null = rest (space to breathe).
+   acc  = 1 where the note rings out as a full power chord, 0 = palm-muted chug. */
+const TRACK_LOADIN={
+  name:'LOAD-IN', bpm:168, style:'metal',
+  riff:[
+    [E2,null,E2,E2,null,E2,null,E2, E2,null,E2,E2,null,E2,E2,null],
+    [E2,null,E2,E2,null,E2,null,E2, F2,null,F2,null,E2,null,null,null],
+    [E2,null,E2,E2,null,G2,null,G2, A2,null,A2,A2,null,Bb2,null,B2],
+    [Bb2,null,Bb2,null,A2,null,G2,null, E2,null,E2,E2,null,E2,null,E2],
+    [C3,null,null,null,B2,null,null,null, A2,null,null,null,G2,null,F2,null],
+    [E2,E2,null,E2,E2,null,E2,E2, null,E2,E2,null,E2,E2,null,E2],
+    [D3,null,C3,null,B2,null,A2,null, G2,null,F2,null,E2,null,E2,E2],
+    [E2,E2,E2,E2,E2,E2,E2,E2, E2,null,E2,null,E2,null,null,null],
+  ],
+  acc:[
+    [1,0,0,0,0,0,0,0, 1,0,0,0,0,0,0,0],
+    [1,0,0,0,0,0,0,0, 1,0,0,0,1,0,0,0],
+    [1,0,0,0,0,0,0,0, 1,0,0,0,0,0,0,1],
+    [1,0,0,0,1,0,0,0, 1,0,0,0,0,0,0,0],
+    [1,0,0,0,1,0,0,0, 1,0,0,0,1,0,1,0],
+    [1,0,0,0,1,0,0,0, 0,0,0,0,1,0,0,0],
+    [1,0,1,0,1,0,1,0, 1,0,1,0,1,0,0,0],
+    [1,0,0,0,0,0,0,0, 1,0,0,0,1,0,0,0],
+  ],
+  lead:[
+    [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+    [659.26,null,622.25,null,587.33,null,493.88,null, 523.25,null,493.88,null,440.00,null,null,null],
+    [null,null,493.88,null,440.00,null,392.00,null, 369.99,null,329.63,null,null,null,null,null],
+    [523.25,null,null,493.88,null,null,440.00,null, 392.00,null,null,369.99,null,null,null,null],
+    [659.26,null,659.26,null,622.25,null,659.26,null, 739.99,null,659.26,null,622.25,null,587.33,null],
+    [783.99,739.99,659.26,622.25,587.33,523.25,493.88,440.00, 392.00,369.99,329.63,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null, null,null,null,null,null,null,null,null],
+  ],
+  drum:[
+    ['kc','d','h','d','sh','d','h','d','kh','d','h','d','sh','d','h','dh'],
+    ['kc','d','h','d','sh','d','h','d','kh','d','h','d','sh','d','h','dh'],
+    ['kc','d','h','d','sh','d','h','d','kh','d','h','d','sh','d','h','dh'],
+    ['kc','d','h','d','sh','d','h','d','kh','d','h','d','sh','d','h','dh'],
+    ['kc','','h','','sh','','h','','kh','','h','','sh','','h','h'],
+    ['kc','d','h','d','sh','d','h','d','kh','d','h','d','sh','d','h','dh'],
+    ['kc','d','h','d','sh','d','h','d','kh','d','h','d','sh','d','h','dh'],
+    ['kc','d','d','d','sh','d','d','d','kc','d','d','d','s','s','s','sc'],
+  ],
+  organ:null, choir:null,
+};
+
+/* ── TRACK 2: "BLACK MASS" — symphonic doom ────────────────────────
+   Slower, heavier, in D minor. The guitars stop being a gallop and
+   become long ringing power chords; a pipe-organ pad and a sustained
+   choir carry the harmony over the top. That contrast — sacred pad
+   against a dirty riff — is the whole point of the style.
+   organ = chord roots held for a bar. choir = sustained top voice. */
+const TRACK_MASS={
+  name:'BLACK MASS', bpm:88, style:'symphonic',
+  // Dm - Bb - F - C  |  Dm - Gm - Bb - A(dom, the lift back to Dm)
+  riff:[
+    [D2,null,null,null,D2,null,D2,null, D2,null,null,null,D2,null,null,null],
+    [Bb2,null,null,null,Bb2,null,Bb2,null, Bb2,null,null,null,Bb2,null,null,null],
+    [F2,null,null,null,F2,null,F2,null, F2,null,null,null,F2,null,null,null],
+    [C3,null,null,null,C3,null,C3,null, C3,null,null,null,Bb2,null,A2,null],
+    [D2,null,D2,null,D2,null,null,null, D2,null,D2,null,D2,null,null,null],
+    [G2,null,G2,null,G2,null,null,null, G2,null,null,null,G2,null,null,null],
+    [Bb2,null,null,null,Bb2,null,Bb2,null, C3,null,null,null,C3,null,null,null],
+    [A2,null,null,null,A2,null,A2,null, A2,null,A2,null,A2,A2,A2,A2],
+  ],
+  acc:[   // almost everything rings out — this track breathes
+    [1,0,0,0,1,0,1,0, 1,0,0,0,1,0,0,0],
+    [1,0,0,0,1,0,1,0, 1,0,0,0,1,0,0,0],
+    [1,0,0,0,1,0,1,0, 1,0,0,0,1,0,0,0],
+    [1,0,0,0,1,0,1,0, 1,0,0,0,1,0,1,0],
+    [1,0,1,0,1,0,0,0, 1,0,1,0,1,0,0,0],
+    [1,0,1,0,1,0,0,0, 1,0,0,0,1,0,0,0],
+    [1,0,0,0,1,0,1,0, 1,0,0,0,1,0,0,0],
+    [1,0,0,0,1,0,1,0, 1,0,1,0,1,1,1,1],
+  ],
+  // Pipe organ: root of each bar's chord, held. Low and churchy.
+  organ:[D2,Bb2,F2,C3, D2,G2,Bb2,A2],
+  // Choir: sustained high voice, moves once or twice a bar. D natural minor.
+  choir:[
+    [D3*2,null,null,null,null,null,null,null, null,null,null,null,null,null,null,null],
+    [D3*2,null,null,null,null,null,null,null, Db3*2,null,null,null,null,null,null,null],
+    [C3*2,null,null,null,null,null,null,null, null,null,null,null,null,null,null,null],
+    [E1*8,null,null,null,null,null,null,null, D3*2,null,null,null,null,null,null,null],
+    [F3*2,null,null,null,null,null,null,null, null,null,null,null,null,null,null,null],
+    [D3*2,null,null,null,null,null,null,null, Eb3*2,null,null,null,null,null,null,null],
+    [F3*2,null,null,null,null,null,null,null, G3*2,null,null,null,null,null,null,null],
+    [A3*2,null,null,null,null,null,null,null, null,null,null,null,null,null,null,null],
+  ],
+  // Lead: soaring, enters late, sits above the choir.
+  lead:[
+    [null,null,null,null,null,null,null,null, null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null, null,null,null,null,null,null,null,null],
+    [null,null,null,null,null,null,null,null, 698.46,null,null,null,659.26,null,null,null],
+    [587.33,null,null,null,523.25,null,null,null, 587.33,null,null,null,null,null,null,null],
+    [880.00,null,null,null,null,null,783.99,null, 698.46,null,null,null,659.26,null,null,null],
+    [587.33,null,null,null,523.25,null,587.33,null, 622.25,null,null,null,null,null,null,null],
+    [698.46,null,783.99,null,880.00,null,null,null, 932.33,null,null,null,880.00,null,null,null],
+    [783.99,null,null,null,698.46,null,659.26,null, 587.33,null,null,null,null,null,null,null],
+  ],
+  drum:[
+    ['kc','','','','s','','','','k','','','','s','','',''],
+    ['k','','','','s','','','','k','','k','','s','','',''],
+    ['k','','','','s','','','','k','','','','s','','',''],
+    ['k','','','','s','','','','k','','k','','s','','','s'],
+    ['kc','','','','s','','','','k','','','','s','','',''],
+    ['k','','','','s','','','','k','','k','','s','','',''],
+    ['k','','','','s','','','','k','','','','s','','',''],
+    ['k','','','','s','','','','k','','k','','s','s','s','sc'],
+  ],
+};
+
+const TRACKS=[TRACK_LOADIN,TRACK_MASS];
+const CUR=()=>TRACKS[MUS.track];
+// STEP has to follow the current track's tempo, so it's a function now.
+const stepDur=()=>60/CUR().bpm/4;
+
+// Waveshaper curve — this is what turns a clean pulse into a guitar.
+function makeCurve(k){
+  const n=1024,c=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const x=i*2/n-1;
+    c[i]=(1+k)*x/(1+k*Math.abs(x));   // soft-clip; k controls the gain
+  }
+  return c;
+}
+// Rhythm guitar: two detuned saws through distortion + a cab-sim lowpass.
+// muted=true gives the choked palm-mute chug; false rings out as a power chord.
+function gtr(freq,t0,dur,vol,muted){
+  const pre=AC.createGain();
+  [-9,9].forEach(det=>{
+    const o=AC.createOscillator();
+    o.type='sawtooth';
+    o.frequency.setValueAtTime(freq,t0);
+    o.detune.setValueAtTime(det,t0);
+    o.connect(pre);
+    o.start(t0);o.stop(t0+dur+0.02);
+  });
+  // fifth on top = power chord (skipped when muted, that's the point)
+  if(!muted){
+    const o5=AC.createOscillator();
+    o5.type='sawtooth';
+    o5.frequency.setValueAtTime(freq*1.4983,t0);   // just fifth
+    o5.detune.setValueAtTime(4,t0);
+    o5.connect(pre);o5.start(t0);o5.stop(t0+dur+0.02);
+    const o8=AC.createOscillator();
+    o8.type='sawtooth';
+    o8.frequency.setValueAtTime(freq*2,t0);
+    o8.connect(pre);o8.start(t0);o8.stop(t0+dur+0.02);
+  }
+  pre.gain.value=muted?0.42:0.30;
+  const sh=AC.createWaveShaper();
+  sh.curve=MUS.dist;sh.oversample='2x';
+  const cab=AC.createBiquadFilter();
+  cab.type='lowpass';
+  cab.frequency.value=muted?1700:3000;   // muted = darker
+  cab.Q.value=0.7;
+  const hp=AC.createBiquadFilter();
+  hp.type='highpass';hp.frequency.value=70;
+  const g=AC.createGain();
+  const atk=0.004, rel=muted?dur*0.5:dur;
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(vol,t0+atk);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+rel);
+  pre.connect(sh);sh.connect(cab);cab.connect(hp);hp.connect(g);g.connect(MUS.bus);
+}
+// Lead: square through the same distortion, sits on top.
+function lead(freq,t0,dur,vol){
+  const o=AC.createOscillator(),pre=AC.createGain();
+  o.type='square';o.frequency.setValueAtTime(freq,t0);
+  o.connect(pre);pre.gain.value=0.5;
+  const sh=AC.createWaveShaper();sh.curve=MUS.dist;sh.oversample='2x';
+  const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=4200;
+  const g=AC.createGain();
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(vol,t0+0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  pre.connect(sh);sh.connect(f);f.connect(g);g.connect(MUS.bus);
+  o.start(t0);o.stop(t0+dur+0.02);
+}
+function noise(t0,dur,vol,hp){
+  const n=Math.max(1,Math.floor(AC.sampleRate*dur)),b=AC.createBuffer(1,n,AC.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+  const s=AC.createBufferSource();s.buffer=b;
+  const f=AC.createBiquadFilter();f.type='highpass';f.frequency.value=hp;
+  const g=AC.createGain();g.gain.value=vol;
+  s.connect(f);f.connect(g);g.connect(MUS.bus);
+  s.start(t0);
+}
+// Metal kick: tight, clicky, fast decay so double-kick stays articulate.
+function kick(t0,hard){
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='sine';
+  o.frequency.setValueAtTime(hard?190:160,t0);
+  o.frequency.exponentialRampToValueAtTime(45,t0+0.045);
+  g.gain.setValueAtTime(hard?0.62:0.42,t0);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+(hard?0.10:0.08));
+  o.connect(g);g.connect(MUS.bus);
+  o.start(t0);o.stop(t0+0.12);
+  noise(t0,0.012,0.10,3000);            // beater click
+}
+// Cracking snare: noise burst + a tuned body tone.
+function snare(t0){
+  noise(t0,0.13,0.26,1400);
+  const o=AC.createOscillator(),g=AC.createGain();
+  o.type='triangle';o.frequency.setValueAtTime(185,t0);
+  g.gain.setValueAtTime(0.20,t0);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+0.09);
+  o.connect(g);g.connect(MUS.bus);
+  o.start(t0);o.stop(t0+0.11);
+}
+function crash(t0){ noise(t0,0.55,0.13,5500); }
+
+// Pipe organ: stacked harmonics (drawbar-style) + slow attack. Churchy.
+function organ(freq,t0,dur,vol){
+  const g=AC.createGain();
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.linearRampToValueAtTime(vol,t0+0.10);      // slow swell, not a stab
+  g.gain.setValueAtTime(vol,t0+dur*0.75);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  // drawbars: root, octave, fifth, double octave
+  [[1,1],[2,0.5],[3,0.30],[4,0.22]].forEach(([mult,amp])=>{
+    const o=AC.createOscillator(),og=AC.createGain();
+    o.type='sine';o.frequency.setValueAtTime(freq*mult,t0);
+    og.gain.value=amp;
+    o.connect(og);og.connect(g);
+    o.start(t0);o.stop(t0+dur+0.05);
+  });
+  const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2200;
+  g.connect(lp);lp.connect(MUS.bus);
+}
+// Choir: detuned triangles + a touch of vibrato = sustained "aah" pad.
+function choir(freq,t0,dur,vol){
+  const g=AC.createGain();
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.linearRampToValueAtTime(vol,t0+0.22);      // breathy fade-in
+  g.gain.setValueAtTime(vol,t0+dur*0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  const vib=AC.createOscillator(),vg=AC.createGain();
+  vib.type='sine';vib.frequency.value=5.2;vg.gain.value=3.5;
+  vib.connect(vg);vib.start(t0);vib.stop(t0+dur+0.05);
+  [-8,0,8].forEach(det=>{                           // three voices, spread
+    const o=AC.createOscillator();
+    o.type='triangle';o.frequency.setValueAtTime(freq,t0);
+    o.detune.setValueAtTime(det,t0);
+    vg.connect(o.detune);
+    o.connect(g);
+    o.start(t0);o.stop(t0+dur+0.05);
+  });
+  const lp=AC.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3000;
+  g.connect(lp);lp.connect(MUS.bus);
+}
+
+function schedule(){
+  if(!MUS.on)return;
+  const T=CUR(), STEP=stepDur();
+  while(MUS.next<AC.currentTime+0.12){
+    const s=MUS.step%16, bar=Math.floor(MUS.step/16)%T.riff.length;
+    const t0=MUS.next;
+    const sym=T.style==='symphonic';
+
+    // ── pipe organ: one long chord per bar (symphonic track only) ──
+    if(T.organ&&s===0){
+      organ(T.organ[bar],t0,STEP*15.5,0.075);
+      organ(T.organ[bar]*1.4983,t0,STEP*15.5,0.045);   // the fifth
+    }
+    // ── choir ──
+    if(T.choir){
+      const C=T.choir[bar][s];
+      if(C)choir(C,t0,STEP*7.5,0.055);
+    }
+
+    // ── rhythm guitar ──
+    const n=T.riff[bar][s];
+    if(n!==null&&n!==undefined){
+      const accented=!!T.acc[bar][s];
+      // metal: accents ring, mutes choke. symphonic: everything rings longer.
+      const dur=accented?(sym?STEP*3.4:STEP*1.9):STEP*0.62;
+      gtr(n,t0,dur,accented?(sym?0.15:0.17):0.13,!accented);
+      // sub-octave bass doubling the riff — the weight
+      const bs=AC.createOscillator(),bg=AC.createGain();
+      bs.type='square';bs.frequency.setValueAtTime(n/2,t0);
+      bg.gain.setValueAtTime(0.0001,t0);
+      bg.gain.exponentialRampToValueAtTime(0.10,t0+0.005);
+      bg.gain.exponentialRampToValueAtTime(0.0001,t0+STEP*(sym?2.4:0.9));
+      bs.connect(bg);bg.connect(MUS.bus);
+      bs.start(t0);bs.stop(t0+STEP*(sym?2.5:0.95));
+    }
+
+    // ── lead ──
+    const L=T.lead[bar][s];
+    if(L)lead(L,t0,STEP*(sym?3.2:1.5),sym?0.065:0.075);
+
+    // ── drums ──
+    const d=T.drum[bar][s]||'';
+    if(d.includes('k'))kick(t0,true);
+    if(d.includes('d'))kick(t0,false);      // double-kick gallop
+    if(d.includes('s'))snare(t0);
+    if(d.includes('h'))noise(t0,0.028,0.05,8000);
+    if(d.includes('c'))crash(t0);
+
+    MUS.next+=STEP;MUS.step++;
+  }
+}
+function musicStart(){
+  if(MUS.started)return;
+  try{
+    if(!AC)AC=new (window.AudioContext||window.webkitAudioContext)();
+    MUS.dist=makeCurve(28);                 // the distortion curve, built once
+    MUS.bus=AC.createGain();MUS.bus.gain.value=0.42;
+    // master limiter — distortion stacks up fast, this keeps it from clipping
+    const lim=AC.createDynamicsCompressor();
+    lim.threshold.value=-8;lim.knee.value=4;
+    lim.ratio.value=12;lim.attack.value=0.003;lim.release.value=0.14;
+    MUS.bus.connect(lim);lim.connect(AC.destination);
+    MUS.started=1;MUS.on=1;MUS.step=0;MUS.next=AC.currentTime+0.06;
+    MUS.timer=setInterval(schedule,25);
+    schedule();
+  }catch(e){}
+}
+/* M cycles: track 1 -> track 2 -> ... -> off -> track 1.
+   Restart the bar counter on a switch so the new track begins at its
+   own bar 0 rather than dropping in halfway through a phrase. */
+function musicToggle(){
+  if(!MUS.started){musicStart();musicFlash();return;}
+  if(!MUS.on){                       // coming back from off -> first track
+    MUS.track=0;MUS.on=1;
+  }else if(MUS.track+1<TRACKS.length){
+    MUS.track++;                     // next track
+  }else{
+    MUS.on=0;                        // wrap to off
+  }
+  if(MUS.bus)MUS.bus.gain.value=MUS.on?0.42:0;
+  if(MUS.on){
+    MUS.step=0;
+    // The scheduler queues up to 120ms ahead, so the outgoing track already
+    // has notes committed to the audio clock. Start the new one AFTER that
+    // tail or the two overlap and you hear a stutter on every switch.
+    MUS.next=Math.max(AC.currentTime+0.06,MUS.next);
+  }
+  musicFlash();
+}
+let musNote=0;                       // frames left on the on-screen track name
+function musicFlash(){musNote=150;}
+// Duck the music under the win fanfare / union call
+function duck(v,ms){
+  if(!MUS.bus||!MUS.on)return;
+  MUS.bus.gain.value=v;
+  setTimeout(()=>{if(MUS.bus&&MUS.on)MUS.bus.gain.value=0.42;},ms);
+}
+
+/* HAZARD TYPES
+   beam   sweeping fixture; blinds you. Decks block it.
+   pyro   timed gerb; hard hit.
+   wall   LED panel: stands, teeters (red warning), topples across the deck.
+   ramp   cable ramp — low bundle; hop it or it staggers you and you drop cabs.
+   fork   forklift patrolling the deck horizontally.
+   hook   chain motor hook dropping on a timer.
+   conf   confetti cannon — fires a cloud that obscures the screen.
+   guest  drunk guest — wanders unpredictably, knocks you back, no damage.
+
+   UNION 15: every level has a scheduled break. When the call comes, work stops:
+   the crew walks out with coffee and sits at stage left. You have to go sit
+   with them for 10 seconds or you don't get the stage back.
+*/
+const LEVELS=[
+ // 1 — beams + cover. Teach the shadow.
+ { p:[[0,430,960,50],[250,352,130,16],[470,330,120,16],[700,340,120,16]],
+   cabs:[[300,300],[510,290],[740,300]],
+   motor:[470,120], con:[880,378], drink:[730,300], union:430, unionAt:900,
+   haz:[{t:'beam',x:295,arc:.5,sp:.011},
+        {t:'pyro',x:620,y:414},
+        {t:'wall',x:200,y:430,w:34,h:60,dir:-1,per:300}] },
+
+ // 2 — introduce the cable ramp.
+ { p:[[0,430,960,50],[150,340,100,16],[330,300,120,16],[540,320,110,16],[740,330,120,16],[400,200,140,16],[80,220,110,16]],
+   cabs:[[190,300],[380,260],[790,290],[450,160]],
+   motor:[330,120], con:[905,378], drink:[110,180], union:250, unionAt:1000,
+   haz:[{t:'beam',x:180,arc:.75,sp:.014},{t:'beam',x:660,arc:.75,sp:-.012},
+        {t:'pyro',x:590,y:414},{t:'pyro',x:120,y:414},
+        {t:'ramp',x:760,y:430},{t:'ramp',x:520,y:430},
+        {t:'guest',x:450,y:430,x0:380,x1:640},
+        {t:'wall',x:700,y:430,w:34,h:70,dir:-1,per:260}] },
+
+ // 3 — introduce the forklift.
+ { p:[[0,430,960,50],[390,368,90,16],[700,360,90,16],[100,320,90,16],[300,280,100,16],[490,300,110,16],[660,250,110,16],[820,310,100,16],[380,180,130,16]],
+   cabs:[[130,280],[340,240],[700,210],[880,270],[430,140]],
+   motor:[600,110], con:[60,378], drink:[425,140], union:420, unionAt:1100,
+   lifts:[[240,54,200,400,.55]],
+   haz:[{t:'beam',x:140,arc:.8,sp:.016},{t:'beam',x:480,arc:.8,sp:-.013},
+        {t:'pyro',x:410,y:352},{t:'pyro',x:580,y:414},
+        {t:'fork',x:880,y:430,x0:868,x1:942,sp:1.1},
+        {t:'guest',x:500,y:430,x0:400,x1:700},
+        {t:'wall',x:250,y:430,w:34,h:75,dir:1,per:220}] },
+
+ // 4 — introduce the chain motor hook.
+ { p:[[0,430,960,50],[120,340,110,16],[330,290,120,16],[540,340,110,16],[750,300,120,16],[280,190,150,16],[600,200,140,16]],
+   cabs:[[160,300],[380,250],[800,260],[330,150],[650,160]],
+   motor:[480,110], con:[900,378], drink:[560,300], union:260, unionAt:1200,
+   truss:[[255,185,430]],
+   haz:[{t:'beam',x:250,arc:.7,sp:.013},
+        {t:'pyro',x:540,y:414},{t:'pyro',x:750,y:414},
+        {t:'ramp',x:330,y:430},{t:'ramp',x:790,y:430},
+        {t:'hook',x:180,per:200},{t:'hook',x:560,per:260},
+        {t:'guest',x:400,y:430,x0:300,x1:640},{t:'guest',x:820,y:430,x0:700,x1:940},
+        {t:'wall',x:850,y:430,w:34,h:70,dir:-1,per:280}] },
+
+ // 5 — introduce the confetti cannon.
+ { p:[[0,430,960,50],[390,376,100,16],[730,368,100,16],[90,330,90,16],[280,290,100,16],[470,320,110,16],[650,270,110,16],[830,320,100,16],[350,190,140,16],[640,160,130,16]],
+   cabs:[[120,290],[310,250],[690,230],[860,280],[400,150],[670,120]],
+   motor:[500,100], con:[40,378], drink:[480,280], union:330, unionAt:1300,
+   lifts:[[615,52,180,400,.6]], truss:[[210,325,430]],
+   haz:[{t:'beam',x:200,arc:.85,sp:.015},
+        {t:'pyro',x:400,y:360},{t:'pyro',x:740,y:352},{t:'pyro',x:945,y:414},
+        {t:'ramp',x:250,y:430},{t:'ramp',x:600,y:430},
+        {t:'fork',x:850,y:430,x0:810,x1:895,sp:.9},
+        {t:'hook',x:430,per:220},
+        {t:'conf',x:760,per:300},
+        {t:'case',y:430,dir:1,sp:1.55,per:730,lane:[150,W+70]},
+        {t:'guest',x:350,y:430,x0:250,x1:560},{t:'guest',x:700,y:430,x0:640,x1:780},
+        {t:'wall',x:150,y:430,w:34,h:65,dir:1,per:300}] },
+
+ // 6 — everything at once. Closing night.
+ { p:[[0,430,960,50],[360,372,90,16],[680,364,90,16],[80,330,85,16],[260,285,95,16],[450,315,100,16],[630,265,100,16],[810,310,95,16],[330,185,130,16],[620,155,120,16],[150,200,110,16]],
+   cabs:[[110,290],[290,245],[670,225],[840,270],[380,145],[650,115],[185,160]],
+   motor:[520,95], con:[30,378], drink:[690,225], union:300, unionAt:1200,
+   lifts:[[560,50,150,400,.65]], truss:[[200,195,430],[775,150,430]],
+   haz:[{t:'beam',x:170,arc:.9,sp:.017},{t:'beam',x:880,arc:.8,sp:-.014},
+        
+        {t:'pyro',x:370,y:356},{t:'pyro',x:690,y:348},{t:'pyro',x:110,y:414},
+        {t:'ramp',x:230,y:430},{t:'ramp',x:550,y:430},
+        {t:'fork',x:880,y:430,x0:865,x1:940,sp:1.2},
+        {t:'hook',x:400,per:180},{t:'hook',x:760,per:210},
+        {t:'conf',x:250,per:260},{t:'conf',x:620,per:320},
+        {t:'case',y:430,dir:1,sp:1.7,per:680,lane:[140,W+70]},{t:'case',y:430,dir:-1,sp:1.5,per:810,lane:[140,W+70]},
+        {t:'guest',x:400,y:430,x0:330,x1:620},{t:'guest',x:760,y:430,x0:660,x1:830},{t:'guest',x:180,y:430,x0:140,x1:290},
+        {t:'wall',x:130,y:430,w:34,h:65,dir:1,per:240}] },
+
+ // 7 — LIFT TOWN. Three scissor lifts are the main traversal.
+ { p:[[0,430,960,50],[120,350,90,16],[430,300,110,16],[760,340,100,16],[300,180,120,16],[620,160,120,16]],
+   cabs:[[150,310],[470,260],[800,300],[340,140],[660,120]],
+   motor:[480,95], con:[905,378], drink:[350,140], union:230, unionAt:1150,
+   lifts:[[260,54,190,400,.5],[600,54,170,400,.62],[880,50,230,400,.7]],
+   truss:[[60,205,430]],
+   haz:[{t:'beam',x:430,arc:.8,sp:.014},
+        {t:'pyro',x:470,y:414},{t:'pyro',x:700,y:414},
+        {t:'ramp',x:380,y:430},
+        {t:'case',y:430,dir:1,sp:1.5,per:650,lane:[90,830]},
+        {t:'guest',x:520,y:430,x0:430,x1:640},
+        {t:'wall',x:820,y:430,w:34,h:65,dir:-1,per:300}] },
+
+ // 8 — THE GRID. Truss climbing is the point; the decks are stacked high.
+ { p:[[0,430,960,50],[90,360,100,16],[380,360,110,16],[700,360,110,16],
+      [190,270,110,16],[520,270,110,16],[810,270,110,16],
+      [330,180,120,16],[640,180,120,16],[120,180,90,16]],
+   cabs:[[120,320],[420,320],[740,320],[230,230],[560,230],[380,140],[680,140]],
+   motor:[480,95], con:[40,378], drink:[690,140], union:270, unionAt:1250,
+   truss:[[290,175,430],[600,175,430],[880,265,430]],
+   lifts:[[160,50,175,400,.55]],
+   haz:[{t:'beam',x:250,arc:.75,sp:.015},{t:'beam',x:720,arc:.75,sp:-.013},
+        {t:'pyro',x:450,y:414},{t:'pyro',x:820,y:414},
+        {t:'ramp',x:120,y:430},{t:'ramp',x:660,y:430},
+        {t:'hook',x:390,per:200},{t:'hook',x:820,per:240},
+        {t:'case',y:430,dir:-1,sp:1.6,per:710,lane:[150,W+70]},
+        {t:'guest',x:540,y:430,x0:460,x1:640}] },
+
+ // 9 — LOAD OUT. The floor is a highway; cases from both directions.
+ { p:[[0,430,960,50],[150,355,100,16],[480,355,110,16],[790,355,100,16],
+      [300,265,110,16],[630,265,110,16],[100,250,90,16],
+      [420,175,130,16],[740,165,120,16]],
+   cabs:[[180,315],[520,315],[820,315],[340,225],[670,225],[470,135],[780,125]],
+   motor:[560,95], con:[35,378], drink:[130,210], union:250, unionAt:1200,
+   lifts:[[250,52,200,400,.6],[900,50,220,400,.68]],
+   truss:[[390,170,430],[700,160,430]],
+   haz:[{t:'beam',x:300,arc:.85,sp:.016},{t:'beam',x:820,arc:.8,sp:-.014},
+        {t:'pyro',x:360,y:414},{t:'pyro',x:600,y:414},{t:'pyro',x:940,y:414},
+        {t:'ramp',x:150,y:430},{t:'ramp',x:450,y:430},{t:'ramp',x:740,y:430},
+        {t:'case',y:430,dir:1,sp:1.75,per:660,lane:[145,W+70]},{t:'case',y:430,dir:-1,sp:1.55,per:790,lane:[145,W+70]},
+        {t:'hook',x:520,per:190},
+        {t:'conf',x:680,per:300},
+        {t:'guest',x:380,y:430,x0:300,x1:560},{t:'guest',x:850,y:430,x0:780,x1:930},
+        {t:'wall',x:120,y:430,w:34,h:60,dir:1,per:260}] },
+
+ // 10 — CLOSING NIGHT. Everything, all at once.
+ { p:[[0,430,960,50],[110,360,90,16],[400,355,100,16],[720,360,95,16],
+      [240,270,100,16],[560,265,100,16],[850,270,95,16],
+      [130,180,95,16],[370,175,110,16],[680,170,110,16]],
+   cabs:[[140,320],[430,315],[750,320],[270,230],[590,225],[880,230],[410,135],[720,130]],
+   motor:[500,90], con:[30,378], drink:[600,225], union:320, unionAt:1300,
+   lifts:[[330,50,180,400,.62],[640,50,165,400,.7],[920,48,225,400,.75]],
+   truss:[[210,175,430],[480,170,430],[790,165,430]],
+   haz:[{t:'beam',x:180,arc:.9,sp:.017},{t:'beam',x:540,arc:.85,sp:-.015},{t:'beam',x:890,arc:.8,sp:.016},
+        {t:'pyro',x:440,y:414},{t:'pyro',x:610,y:414},{t:'pyro',x:940,y:414},{t:'pyro',x:120,y:414},
+        {t:'ramp',x:380,y:430},{t:'ramp',x:700,y:430},{t:'ramp',x:850,y:430},
+        {t:'case',y:430,dir:1,sp:1.8,per:650,lane:[140,W+70]},{t:'case',y:430,dir:-1,sp:1.65,per:760,lane:[140,W+70]},
+        {t:'hook',x:440,per:180},{t:'hook',x:760,per:220},
+        {t:'conf',x:260,per:280},{t:'conf',x:660,per:340},
+        {t:'guest',x:430,y:430,x0:350,x1:620},{t:'guest',x:800,y:430,x0:720,x1:880},
+        {t:'wall',x:160,y:430,w:34,h:70,dir:1,per:250}] }
+];
+
+let lvl=0,P,plat,lifts,truss,cabs,haz,con,motor,drink,heart,hp,t=0,state='play',flash=0,note=0;
+let blind=0,flown=0,phase='collect',boost=0,parts=[],fog=0;
+// ── SCORING ──────────────────────────────────────────────────────
+// Each level gets 60s. Score = time left + lives left, weighted.
+// Run total carries across levels; the leaderboard tracks whole runs.
+const LEVEL_TIME=60*60;          // 60 seconds in frames
+const PTS_PER_SEC=10;            // time bonus
+const PTS_PER_LIFE=250;          // life bonus
+const PTS_CLEAR=500;             // flat clear bonus
+let clock=LEVEL_TIME;            // frames left on this level
+let score=0;                     // total across the run
+let lastBreak=null;              // {time,lives,clear,total} for the win screen
+let board=[],boardState='idle';  // 'idle'|'loading'|'ready'|'error'|'entry'|'saving'
+let boardLocal=0;                // 1 when no shared storage is available
+let nameBuf='',qualified=0;
+
+/* ── LEADERBOARD ──────────────────────────────────────────────────
+   Three backends, tried in order:
+     1. Netlify Function at /api/scores  — a REAL shared server. This
+        is what's live at hmxsoundcheck.netlify.app. Needs the two
+        files in netlify/ (see the deploy README).
+     2. Artifact storage (window.storage) — shared, but only works
+        inside the Claude interface.
+     3. In-memory — a file opened straight off disk with no backend.
+   Nothing here may throw: a dead leaderboard must never kill the loop.
+   ───────────────────────────────────────────────────────────────── */
+const BOARD_KEY='hmxlive:scores:v1';
+const API='/api/scores';
+let boardMode='none';   // 'server' | 'artifact' | 'local'
+const hasStore=()=>typeof window!=='undefined'&&window.storage&&typeof window.storage.get==='function';
+const canFetch=()=>typeof fetch==='function'&&typeof location!=='undefined'&&/^https?:/.test(location.protocol);
+
+const cleanBoard=a=>(Array.isArray(a)?a:[])
+  .filter(e=>e&&typeof e.score==='number'&&isFinite(e.score))
+  .map(e=>({name:String(e.name||'ANON').slice(0,12),score:Math.floor(e.score),
+            lvl:Number(e.lvl)||0,when:Number(e.when)||0}))
+  .sort((a,b)=>b.score-a.score).slice(0,10);
+
+async function boardLoad(){
+  boardState='loading';
+  // 1 — real server
+  if(canFetch()){
+    try{
+      const r=await fetch(API,{method:'GET'});
+      if(r.ok){
+        board=cleanBoard(await r.json());
+        boardMode='server';boardLocal=0;boardState='ready';return;
+      }
+    }catch(e){/* no function deployed — fall through */}
+  }
+  // 2 — artifact storage
+  if(hasStore()){
+    try{
+      const r=await window.storage.get(BOARD_KEY,true);
+      board=cleanBoard(r&&r.value?JSON.parse(r.value):[]);
+      boardMode='artifact';boardLocal=0;boardState='ready';return;
+    }catch(e){
+      board=[];boardMode='artifact';boardLocal=0;boardState='ready';return;  // missing key = empty board
+    }
+  }
+  // 3 — local only
+  boardMode='local';boardLocal=1;boardState='ready';
+}
+
+async function boardSave(entry){
+  boardState='saving';
+  // optimistic local merge so the UI is right even if the write fails
+  board=cleanBoard(board.concat([entry]));
+  if(canFetch()){
+    try{
+      const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify(entry)});
+      if(r.ok){
+        board=cleanBoard(await r.json());     // server returns the authoritative board
+        boardMode='server';boardLocal=0;boardState='ready';return;
+      }
+    }catch(e){/* fall through */}
+  }
+  if(hasStore()){
+    try{
+      let live=[];
+      try{
+        const r=await window.storage.get(BOARD_KEY,true);
+        live=r&&r.value?JSON.parse(r.value):[];
+      }catch(e){/* first entry */}
+      board=cleanBoard((Array.isArray(live)?live:[]).concat([entry]));
+      await window.storage.set(BOARD_KEY,JSON.stringify(board),true);
+      boardMode='artifact';boardLocal=0;boardState='ready';return;
+    }catch(e){/* fall through */}
+  }
+  boardMode='local';boardLocal=1;boardState='ready';
+}
+const madeTop10=s=>s>0&&(board.length<10||s>board[board.length-1].score);
+
+/* ── SIDEBAR ──────────────────────────────────────────────────────
+   The top 10 lives in DOM next to the canvas rather than being drawn
+   into it — text stays crisp, it reflows on narrow screens, and it
+   costs the render loop nothing. Refreshed on a slow timer so you can
+   watch someone else's score land mid-run.
+   ───────────────────────────────────────────────────────────────── */
+function sideRender(){
+  const me=document.getElementById('brun');
+  if(me)me.textContent=score;
+  const md=document.getElementById('bmode');
+  if(md){
+    md.textContent=boardState==='loading'?'connecting…'
+      :boardMode==='server'?'live · shared'
+      :boardMode==='artifact'?'shared'
+      :'local only';
+    md.className='mode'+(boardMode==='server'?' live':'');
+  }
+  const ol=document.getElementById('blist');
+  if(!ol)return;
+  if(!board.length){
+    ol.innerHTML='<div class="empty">No scores yet.<br>Finish a show to claim the top spot.</div>';
+    return;
+  }
+  ol.innerHTML=board.slice(0,10).map((e,i)=>{
+    const nm=String(e.name||'ANON').replace(/[<>&"]/g,'');   // belt and braces
+    const cls=['p1','p2','p3'][i]||'';
+    return '<li class="'+cls+'"><span class="r">'+(i+1)+'</span>'+
+           '<span class="n">'+nm+'</span>'+
+           '<span class="s">'+e.score+'</span></li>';
+  }).join('');
+}
+// Poll gently — a shared board that never updates isn't much of a board.
+function sideStart(){
+  boardLoad().then(sideRender);
+  setInterval(()=>{
+    if(boardState==='entry'||boardState==='saving')return;  // don't stomp a save
+    boardLoad().then(sideRender);
+  },30000);
+}
+// Union 15
+let union={on:0,called:0,sat:0,crew:[],at:0,done:0,table:0};
+const UNION_SIT=600;        // 10 seconds at 60fps
+const BOOST_MAX=720;        // energy drink: 12 seconds at 60fps
+// Punch: a short active window, then a cooldown so you can't just mash X.
+const PUNCH_DUR=14;         // frames the fist is out (hitbox live for the first 8)
+const PUNCH_COOL=26;        // frames before you can throw another
+const KO_TIME=420;          // ~7s a guest stays down before wobbling back up
+
+function load(i){
+  lvl=i;const L=LEVELS[i];
+  plat=L.p.map(p=>({x:p[0],y:p[1],w:p[2],h:p[3]}));
+  // Scissor lifts: ride-on platforms that travel between y0 and y1.
+  lifts=(L.lifts||[]).map(l=>({
+    x:l[0],w:l[1],y0:l[2],y1:l[3],sp:l[4]||.5,ph:Math.random()*6,
+    y:l[2],py:l[2],dir:1
+  }));
+  // Vertical truss: climbable columns. x is the centre, spans y0..y1.
+  truss=(L.truss||[]).map(v=>({x:v[0],y0:v[1],y1:v[2]}));
+  cabs=L.cabs.map(a=>({x:a[0],y:a[1],got:0,rigged:0,bob:Math.random()*6}));
+  haz=L.haz.map(h=>{
+    const o={...h,ph:Math.random()*6,fall:0,fire:0,drop:0,bob:0};
+    // seed every field draw() reads — draw() can run before step() on a fresh load
+    if(o.t==='beam')o.ang=Math.sin(o.ph)*o.arc;
+    if(o.t==='spot')o.ang=0;
+    if(o.t==='fork')o.dir=1;
+    if(o.t==='hook'){o.hy=62;o.warn=0;}
+    if(o.t==='conf')o.warn=0;
+    if(o.t==='guest'){o.wob=Math.random()*6;o.dir=Math.random()<.5?-1:1;o.ko=0;o.kdir=1;}
+    if(o.t==='wall'){o.teeter=0;o.fall=0;}
+    if(o.t==='pyro')o.on=0;
+    // Road case: pushed along a lane, then reset. Lane defaults to the full
+    // stage if none is given, but every level sets one to protect the FOH
+    // position and the spawn.
+    if(o.t==='case'){
+      o.lane=o.lane||[-70,W+70];
+      o.cx=o.dir>0?o.lane[0]:o.lane[1];o.warn=0;o.roll=0;o.gone=0;
+    }
+    return o;
+  });
+  motor={x:L.motor[0],y:L.motor[1]};
+  con={x:L.con[0],y:L.con[1],live:0};
+  drink=L.drink?{x:L.drink[0],y:L.drink[1],got:0,bob:0}:null;
+  // Union table x — needed by the heart spawn below, so it's resolved here.
+  const tbl=L.union!==undefined?L.union:150;
+  // ---- extra life: one heart per level, random spot, no two runs alike ----
+  // Pick a deck at random and sit the heart above it, then reject anywhere
+  // unfair or unreachable: on top of pyro/hooks/cannons, inside a forklift
+  // patrol, on the union table, or clipping the drink/a cab/the console.
+  heart=null;
+  {
+    // `strict` rejects anything even slightly awkward. On a busy level like
+    // show 10 that can exclude every square inch (cases patrol the whole
+    // floor, hooks and walls carve up the decks), so if strict finds nothing
+    // we fall back to `unfair` — the rules that actually matter: never put a
+    // free life somewhere that kills you to reach, or on top of another pickup.
+    const clashes=(hx,hy,strict)=>{
+      const box={x:hx-3,y:hy-3,w:24,h:26};
+      const ov=b=>box.x<b.x+b.w&&box.x+box.w>b.x&&box.y<b.y+b.h&&box.y+box.h>b.y;
+      for(const q of haz){
+        // — always unfair: standing in fire, under a dropping hook, or in a
+        //   toppling wall's arc —
+        if(q.t==='pyro'&&Math.abs(q.x-hx)<34&&Math.abs(q.y-hy)<70)return 1;
+        if(q.t==='hook'&&Math.abs(q.x-hx)<24)return 1;
+        if(q.t==='wall'&&Math.abs(q.x-hx)<44&&Math.abs(q.y-hy)<90)return 1;
+        if(q.t==='fork'&&hx>q.x0-26&&hx<q.x1+26&&Math.abs(q.y-(hy+30))<30)return 1;
+        if(!strict)continue;
+        // — merely untidy: fine to relax when space is tight —
+        if(q.t==='conf'&&Math.abs(q.x-hx)<40)return 1;
+        if(q.t==='ramp'&&Math.abs(q.x-hx)<26)return 1;
+        if(q.t==='case'&&Math.abs(q.y-(hy+30))<30)return 1;
+      }
+      // — always: don't stack pickups or bury it in the furniture —
+      if(drink&&ov({x:drink.x-6,y:drink.y-6,w:26,h:32}))return 1;
+      for(const a of cabs)if(ov({x:a.x-6,y:a.y-6,w:34,h:38}))return 1;
+      if(Math.abs(hx-con.x)<44&&Math.abs(hy-con.y)<40)return 1;
+      for(const v of truss)if(Math.abs(v.x-hx)<18)return 1;
+      for(const lf of lifts)if(Math.abs(lf.x-hx)<lf.w/2+16)return 1;
+      if(!strict)return 0;
+      if(Math.abs(hx-tbl)<70)return 1;                     // union table
+      if(Math.abs(hx-motor.x)<30&&hy>motor.y)return 1;     // drop zone
+      return 0;
+    };
+    const decks=plat.filter(p=>p.w>=60);
+    for(const strict of [1,0]){
+      for(let tries=0;tries<300&&!heart;tries++){
+        const p=decks[(Math.random()*decks.length)|0];
+        const hx=Math.round(p.x+14+Math.random()*Math.max(1,p.w-42));
+        const hy=p.y-30;                                   // resting on the deck
+        if(hx<14||hx>W-32)continue;
+        if(!clashes(hx,hy,strict))heart={x:hx,y:hy,got:0,bob:Math.random()*6};
+      }
+      if(heart)break;
+    }
+    // Last resort: a level so packed that even the relaxed pass failed still
+    // gets its heart — better slightly awkward than silently missing.
+    if(!heart){
+      const p=decks[0];
+      heart={x:Math.max(14,Math.min(W-32,Math.round(p.x+p.w/2))),y:p.y-30,got:0,bob:0};
+    }
+  }
+  P={x:20,y:380,w:16,h:26,vx:0,vy:0,gr:0,f:1,inv:0,anim:0,hold:0,stun:0,climb:0,cph:0,punch:0,pcool:0};
+  // Union 15 — the break is called partway through the level.
+  union={on:0,called:0,sat:0,at:(L.unionAt||1100),t0:t,done:0,table:tbl,
+    crew:[0,1,2,3].map(i=>({x:tbl-60+i*34,tx:tbl-60+i*34,y:404,seated:0,sip:Math.random()*6,f:i<2?1:-1}))};
+  if(hp===undefined)hp=3;
+  state='play';blind=0;flown=0;phase='collect';boost=0;parts=[];fog=0;
+  clock=LEVEL_TIME;ui();
+}
+function ui(){
+  document.getElementById('lvl').textContent=(lvl+1)+'/'+LEVELS.length;
+  const secs=Math.max(0,Math.ceil(clock/60));
+  const ce=document.getElementById('clock');
+  ce.textContent=secs;
+  ce.style.color=secs<=10?'#FF4D3D':'';
+  document.getElementById('score').textContent=score;
+  const br=document.getElementById('brun');
+  if(br)br.textContent=score;
+  document.getElementById('carry').textContent=P?P.hold:0;
+  document.getElementById('hp').textContent='♥'.repeat(Math.max(0,hp))+'·'.repeat(Math.max(0,3-hp));
+  const rig=cabs.filter(a=>a.rigged).length;
+  document.getElementById('task').textContent=
+    union.on?'UNION 15':boost>0?'WIRED!':phase==='collect'?'GRAB CABS':phase==='rig'?('RIG '+rig+'/'+cabs.length):
+    phase==='fly'?'FLYING':'GET TO FOH';
+}
+const hit=(a,b)=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+
+// Ease the player onto the centre of a truss column while climbing, so the
+// ladder feels like a rail rather than something you slide off.
+function v0Snap(px,v){
+  const want=v.x-8;                 // centre the 16px-wide player on the column
+  return px+(want-px)*0.35;
+}
+
+function inShadow(h,tx,ty){
+  const sx=h.x,sy=62;
+  if(ty<=sy)return false;
+  const dx=tx-sx,dy=ty-sy;
+  const steps=Math.min(60,Math.ceil(dy/8));
+  for(let i=1;i<steps;i++){
+    const k=i/steps,rx=sx+dx*k,ry=sy+dy*k;
+    for(const p of plat){
+      if(ry<p.y||ry>p.y+p.h)continue;
+      if(rx>p.x&&rx<p.x+p.w)return true;
+    }
+  }
+  return false;
+}
+function beamReach(h,ang,max){
+  const ux=Math.sin(ang),uy=Math.cos(ang);
+  for(let d=8;d<max;d+=10){
+    const ry=62+uy*d;
+    if(ry<58)continue;
+    const rx=h.x+ux*d;
+    for(const p of plat){
+      if(ry<p.y||ry>p.y+p.h)continue;
+      if(rx>p.x&&rx<p.x+p.w)return d;
+    }
+  }
+  return max;
+}
+
+function dropCabs(){
+  if(P.hold<=0)return;
+  let d=P.hold;
+  for(const a of cabs){
+    if(a.got&&!a.rigged&&d>0){a.got=0;a.x=Math.max(10,Math.min(W-30,P.x-20+Math.random()*40));a.y=P.y;d--;}
+  }
+  P.hold=0;
+}
+function hurt(){
+  if(P.inv>0||boost>0)return;      // energy drink = untouchable
+  hp--;P.inv=90;flash=12;beep(90,.25,'sawtooth',.12);
+  dropCabs();ui();
+  P.x=20;P.y=360;P.vx=P.vy=0;
+  if(hp<=0){
+    state='dead';beep(60,.9,'triangle',.14);
+    qualified=0;nameBuf='';
+    boardLoad().then(()=>{                 // a run that dies still counts
+      if(madeTop10(score)){qualified=1;boardState='entry';}
+    });
+  }
+}
+function stagger(){                 // cable ramp: non-lethal, but you drop the load
+  if(P.stun>0||boost>0)return;
+  P.stun=22;P.vx=-P.f*2.4;P.vy=-2.4;
+  beep(150,.14,'triangle',.07);
+  if(P.hold>0){dropCabs();ui();}
+}
+
+function step(){
+  t++;
+  if(state!=='play'){
+    if(boardState==='entry'||boardState==='saving')return;   // typing a name — hold
+    if(state==='win'&&(K['Space']||K['KeyR'])){
+      if(lvl+1<LEVELS.length)load(lvl+1);
+      else{hp=3;score=0;lastBreak=null;load(0);}              // new run
+    }
+    if(state==='dead'&&K['KeyR']){hp=3;score=0;lastBreak=null;load(0);}
+    return;
+  }
+  if(blind>0)blind--;
+  if(boost>0){boost--;if(boost===0)ui();}
+  if(P.stun>0)P.stun--;
+  // ---- punch ----
+  // Driven from the key state rather than the event handler so the timing is
+  // frame-accurate, same as jump. Can't punch while stunned, climbing, or
+  // hauling cabs — both hands are full.
+  if(P.punch>0)P.punch--;
+  if(P.pcool>0)P.pcool--;
+  if(K['KeyX']&&P.punch<=0&&P.pcool<=0&&P.stun<=0&&!P.climb&&P.hold<=0){
+    P.punch=PUNCH_DUR;P.pcool=PUNCH_DUR+PUNCH_COOL;
+    beep(180,.05,'square',.05);
+  }
+  if(fog>0)fog--;
+
+  // ---- level clock ----
+  // The break is mandated, so it can't cost you: the clock stops for it.
+  // Hitting zero is NOT death — you just stop earning the time bonus.
+  if(!union.on&&phase!=='foh'&&clock>0){
+    clock--;
+    if(clock===600)beep(300,.12,'square',.05);          // 10s warning
+    if(clock<=300&&clock>0&&clock%60===0)beep(360,.08,'square',.05);
+    if(clock<=0){clock=0;beep(200,.35,'square',.05);}   // bonus gone, play on
+  }
+
+  // ---- UNION 15 ----
+  // Called partway through. Everything stops until you take your break.
+  if(!union.called&&!union.done&&(t-union.t0)>union.at&&phase!=='foh'){
+    union.called=1;union.on=1;
+    duck(0.16,900);
+    beep(520,.18,'square',.07);
+    setTimeout(()=>beep(392,.3,'square',.07),200);
+  }
+  if(union.on){
+    let allSeated=1;
+    for(const m of union.crew){
+      const d=m.tx-m.x;
+      if(Math.abs(d)>1.2){m.x+=Math.sign(d)*1.5;m.seated=0;allSeated=0;}
+      else{m.x=m.tx;m.seated=1;}
+      m.sip+=.04;
+    }
+    union.allSeated=allSeated;
+    // you have to be sat with them — near the table and on the ground
+    const near=Math.abs(P.x+P.w/2-union.table)<70&&P.gr&&Math.abs(P.vx)<.5;
+    if(near&&allSeated){
+      union.sat++;
+      if(union.sat%60===0)beep(300+union.sat/8,.06,'sine',.04);
+      if(union.sat>=UNION_SIT){
+        union.on=0;union.done=1;union.sat=0;
+        beep(660,.12,'square',.07);
+        setTimeout(()=>beep(880,.2,'square',.07),120);
+      }
+    }else if(union.sat>0&&!near){
+      union.sat=Math.max(0,union.sat-3);       // stand up and you lose your place
+    }
+  }
+  const frozen=union.on;                        // no work happens during the break
+
+  // ---- scissor lifts: move first, then carry whoever's standing on them ----
+  for(const L of lifts){
+    L.py=L.y;
+    if(!frozen){                                // lifts stop for the break too
+      L.ph+=L.sp*0.012;
+      const mid=(L.y0+L.y1)/2, amp=(L.y1-L.y0)/2;
+      L.y=mid+Math.sin(L.ph)*amp;
+      L.dir=L.y<L.py?-1:1;
+    }
+  }
+  const liftBox=L=>({x:L.x-L.w/2,y:L.y,w:L.w,h:8});
+  // riding: standing on a lift moves you with it, before your own physics run
+  let riding=null;
+  for(const L of lifts){
+    const b=liftBox(L);
+    if(P.x<b.x+b.w&&P.x+P.w>b.x&&Math.abs((P.y+P.h)-b.y)<6&&P.vy>=0){
+      riding=L;P.y+=(L.y-L.py);
+    }
+  }
+
+  let sp=(K['ArrowLeft']?-1:0)+(K['ArrowRight']?1:0);
+  if(blind>0)sp*=-1;
+  if(P.stun>0)sp=0;
+
+  // ---- vertical truss: climb up and down ----
+  const onTruss=truss.find(v=>
+    Math.abs((P.x+P.w/2)-v.x)<11 && P.y+P.h>v.y0 && P.y<v.y1);
+  const up=K['ArrowUp']||K['KeyW'], dn=K['ArrowDown']||K['KeyS'];
+  if(onTruss&&(up||dn||P.climb)&&P.stun<=0){
+    if(up||dn)P.climb=1;
+    if(P.climb){
+      P.vy=0;P.vx=0;
+      const cs=(boost>0?2.4:1.7)*(1-P.hold*0.18);   // carrying cabs slows the climb
+      if(up)P.y-=cs;
+      if(dn)P.y+=cs;
+      if(up||dn)P.cph+=.18;
+      P.x=v0Snap(P.x,onTruss);                      // snap to the ladder
+      // clamp to the truss span
+      if(P.y+P.h<onTruss.y0)P.y=onTruss.y0-P.h;
+      if(P.y>onTruss.y1)P.y=onTruss.y1;
+      // jump off
+      if(K['Space']){P.climb=0;P.vy=-JUMP*0.8;P.vx=P.f*2.2;beep(420,.07,'square',.05);}
+    }
+  }else P.climb=0;
+  if(!onTruss)P.climb=0;
+
+  if(!P.climb){
+    const load_=1-P.hold*0.13;
+    const zip=boost>0?1.45:1;                     // drink also makes you quick
+    P.vx+=sp*0.34*load_*zip;P.vx*=0.86;
+    if(sp)P.f=sp;
+    if(Math.abs(P.vx)>.4)P.anim+=Math.abs(P.vx)*.075;else P.anim*=.7;
+    if((K['Space']||up)&&P.gr&&P.stun<=0){
+      P.vy=-JUMP*(1-P.hold*0.07)*(boost>0?1.1:1);P.gr=0;beep(420,.07,'square',.05);
+    }
+    if(P.vy<0&&!(K['Space']||up))P.vy+=G*0.9;
+    P.vy=Math.min(P.vy+G,7.4);
+  }
+
+  P.x+=P.vx;
+  for(const p of plat)if(hit(P,p)){if(P.vx>0)P.x=p.x-P.w;else if(P.vx<0)P.x=p.x+p.w;P.vx=0;}
+  P.y+=P.vy;
+  if(!P.climb)P.gr=0;
+  for(const p of plat)if(hit(P,p)){
+    if(P.vy>0){P.y=p.y-P.h;P.gr=1;}else if(P.vy<0)P.y=p.y+p.h;
+    P.vy=0;}
+  // lift decks are solid from above — land on them like a platform
+  for(const L of lifts){
+    const b=liftBox(L);
+    if(hit(P,b)&&P.vy>=0&&(P.y+P.h)-b.y<14){P.y=b.y-P.h;P.vy=0;P.gr=1;}
+  }
+  if(P.climb)P.gr=1;                              // on the ladder = footing
+  P.x=Math.max(0,Math.min(W-P.w,P.x));
+  if(P.y>H+60)hurt();
+  if(P.inv>0)P.inv--;
+  if(flash>0)flash--;
+
+  // ---- hazards ----
+  for(const h of haz){
+    if(h.t==='guest'){                      // drunk guest — wanders, knocks you back
+      h.ph+=.03;
+      if(h.wob===undefined){h.wob=0;h.dir=1;}
+      if(h.ko===undefined)h.ko=0;
+
+      // ---- knocked out: lie there, then wobble back up ----
+      if(h.ko>0){
+        h.ko--;
+        h.wob+=.02;                         // slow breathing while down
+        if(h.ko===0)beep(300,.12,'triangle',.05);   // groans back to his feet
+        continue;                           // no collision while horizontal
+      }
+
+      h.wob+=.05;
+      // meandering walk: slow drift plus a wobble, turns at the edges
+      h.x+=h.dir*(.5+Math.sin(h.wob*.7)*.35);
+      if(h.x>h.x1){h.dir=-1;}
+      if(h.x<h.x0){h.dir=1;}
+      if(Math.random()<.006)h.dir*=-1;      // random change of mind
+
+      // ---- take a punch ----
+      // Live only for the first half of the swing, so it reads as a jab
+      // rather than a permanently lethal aura.
+      if(P.punch>PUNCH_DUR-8){
+        const reach={x:P.f>0?P.x+P.w-2:P.x-16,y:P.y+2,w:18,h:20};
+        const gb={x:h.x-8,y:h.y-30,w:16,h:30};
+        if(reach.x<gb.x+gb.w&&reach.x+reach.w>gb.x&&reach.y<gb.y+gb.h&&reach.y+reach.h>gb.y){
+          h.ko=KO_TIME;
+          h.kdir=P.f;                       // which way he topples
+          beep(140,.16,'square',.09);
+          setTimeout(()=>beep(90,.22,'triangle',.07),70);
+          for(let i=0;i<10;i++)parts.push({  // beer goes everywhere
+            x:h.x,y:h.y-22,
+            vx:P.f*(1+Math.random()*3),vy:-2-Math.random()*4,
+            c:['#E8E337','#FFF2B0'][i%2],r:2+Math.random()*3});
+          continue;
+        }
+      }
+
+      const box={x:h.x-8,y:h.y-24,w:16,h:24};
+      if(hit(P,box)&&P.stun<=0&&boost<=0){  // shove, not damage
+        P.vx=(P.x+P.w/2<h.x?-1:1)*3.2;P.vy=-3;P.stun=16;
+        beep(200,.1,'triangle',.05);
+        if(P.hold>0&&Math.random()<.5){dropCabs();ui();}
+      }
+      continue;
+    }
+    if(frozen&&h.t!=='beam')continue;       // machinery stops for the break
+
+    if(h.t==='beam'){
+      h.ph+=h.sp;
+      h.ang=Math.sin(h.ph)*h.arc;
+      const dy=P.y+P.h/2-62;
+      if(dy>0&&boost<=0){
+        const cx=h.x+Math.tan(h.ang)*dy, halfW=14+dy*0.10;
+        if(Math.abs(P.x+P.w/2-cx)<halfW&&P.inv<=0&&!inShadow(h,P.x+P.w/2,P.y+2)){
+          if(blind<=0){flash=6;beep(1400,.12,'sine',.05);}
+          blind=Math.max(blind,34);
+        }
+      }
+    }
+
+    if(h.t==='spot'){                       // followspot: tracks you, but decks still block it
+      const tgt=Math.atan2(P.x+P.w/2-h.x,Math.max(20,P.y-62));
+      h.ang+=Math.max(-h.sp,Math.min(h.sp,tgt-h.ang));   // lags behind — outrun it
+      const dy=P.y+P.h/2-62;
+      if(dy>0&&boost<=0){
+        const cx=h.x+Math.tan(h.ang)*dy, halfW=11+dy*0.06;
+        if(Math.abs(P.x+P.w/2-cx)<halfW&&P.inv<=0&&!inShadow(h,P.x+P.w/2,P.y+2)){
+          if(blind<=0){flash=6;beep(1700,.12,'sine',.05);}
+          blind=Math.max(blind,30);
+        }
+      }
+    }
+
+    if(h.t==='pyro'){
+      h.ph+=.02;
+      h.on=(Math.sin(h.ph*2.2)>.4);
+      if(h.on&&hit(P,{x:h.x-8,y:h.y-56,w:16,h:60}))hurt();
+    }
+
+    if(h.t==='ramp'){                        // low cable bundle — jump it
+      if(hit(P,{x:h.x-14,y:h.y-8,w:28,h:8})&&P.gr)stagger();
+    }
+
+    if(h.t==='fork'){                        // patrols between x0 and x1
+      h.x+=h.sp*h.dir;
+      if(h.x>h.x1){h.x=h.x1;h.dir=-1;}
+      if(h.x<h.x0){h.x=h.x0;h.dir=1;}
+      if(hit(P,{x:h.x-20,y:h.y-30,w:40,h:30}))hurt();
+    }
+
+    if(h.t==='case'){                        // stagehand pushes a road case across
+      const c2=t%h.per;
+      // The case travels a LANE, not the whole stage. A hazard that covers the
+      // entire floor leaves nowhere safe to stand — and the console and the
+      // spawn both live on the floor. The lane keeps the long threatening run
+      // across the open deck while carving those out.
+      const A=h.lane[0], B=h.lane[1];
+      if(c2<70){                             // "HEADS UP" — long enough to react
+        h.warn=1;h.cx=h.dir>0?A:B;h.roll=0;h.gone=0;
+      }else{
+        h.warn=0;h.cx+=h.dir*h.sp;h.roll+=h.dir*h.sp*0.09;
+        if(h.dir>0&&h.cx>B)h.gone=1;
+        if(h.dir<0&&h.cx<A)h.gone=1;
+      }
+      if(!h.gone){
+        const box={x:h.cx-24,y:h.y-30,w:48,h:30};
+        if(hit(P,box))hurt();
+      }
+    }
+
+    if(h.t==='hook'){                        // chain motor hook drops on a timer
+      const c2=t%h.per;
+      if(c2<h.per-70){h.drop=0;h.warn=(c2>h.per-100);}
+      else{h.warn=0;h.drop=Math.min(1,(c2-(h.per-70))/26);}
+      h.hy=62+h.drop*330;
+      if(h.drop>0&&hit(P,{x:h.x-9,y:h.hy-14,w:18,h:22}))hurt();
+    }
+
+    if(h.t==='conf'){                        // confetti cannon — obscures the screen
+      const c2=t%h.per;
+      h.warn=(c2>h.per-40&&c2<h.per-4);
+      if(c2===h.per-1){
+        h.fire=1;beep(240,.3,'sawtooth',.09);
+        for(let i=0;i<70;i++)parts.push({
+          x:h.x+(Math.random()-.5)*20,y:404,
+          vx:(Math.random()-.5)*5,vy:-5-Math.random()*6,
+          c:['#E8E337','#FF4D3D','#3FBF8F','#2D6CD8','#FFF'][i%5],r:Math.random()*6});
+        if(Math.abs(P.x+P.w/2-h.x)<210)fog=Math.max(fog,150);
+      }
+    }
+
+    if(h.t==='wall'){
+      const c2=t%h.per;
+      if(c2<h.per-110){h.fall=0;h.teeter=0;}
+      else if(c2<h.per-80){h.teeter=1;h.fall=0;}
+      else{h.teeter=0;h.fall=Math.min(1,(c2-(h.per-80))/34);}
+      let box;
+      if(h.fall<0.15)box={x:h.x-h.w/2,y:h.y-h.h,w:h.w,h:h.h};
+      else{
+        const reach=h.h*h.fall;
+        box=h.dir>0?{x:h.x,y:h.y-h.w*(1-h.fall)-6,w:reach,h:h.w+6}
+                   :{x:h.x-reach,y:h.y-h.w*(1-h.fall)-6,w:reach,h:h.w+6};
+      }
+      if(hit(P,box))hurt();
+    }
+  }
+
+  // confetti particles
+  for(let i=parts.length-1;i>=0;i--){
+    const q=parts[i];
+    q.vy+=.13;q.x+=q.vx;q.y+=q.vy;q.r+=.2;
+    if(q.y>H+20)parts.splice(i,1);
+  }
+
+  // ---- energy drink ----
+  if(drink){
+    drink.bob+=.08;
+    if(!drink.got&&hit(P,{x:drink.x-4,y:drink.y-4,w:22,h:28})){
+      drink.got=1;boost=BOOST_MAX;           // ~12 seconds
+      beep(880,.09,'square',.07);
+      setTimeout(()=>beep(1180,.14,'square',.07),90);
+      ui();
+    }
+  }
+
+  // ---- extra life ----
+  if(heart){
+    heart.bob+=.07;
+    if(!heart.got&&hit(P,{x:heart.x-4,y:heart.y-4,w:24,h:26})){
+      heart.got=1;
+      if(hp<3){hp++;beep(660,.1,'square',.07);setTimeout(()=>beep(990,.18,'square',.07),100);}
+      else beep(990,.14,'sine',.05);        // already full — collect it anyway
+      ui();
+    }
+  }
+
+  // ---- objective chain ----
+  for(const a of cabs){
+    a.bob+=.06;
+    if(!frozen&&!a.got&&!a.rigged&&P.hold<2&&hit(P,{x:a.x-2,y:a.y-2,w:26,h:30})){
+      a.got=1;P.hold++;beep(300,.1,'square',.06);ui();
+    }
+  }
+  if(!frozen&&P.hold>0&&hit(P,{x:motor.x-26,y:motor.y-10,w:52,h:300})){
+    for(const a of cabs)if(a.got&&!a.rigged){
+      a.rigged=1;a.got=0;beep(660+note*90,.14,'square',.07);note=(note+1)%5;
+    }
+    P.hold=0;ui();
+  }
+  const allRig=cabs.every(a=>a.rigged);
+  if(phase==='collect'&&cabs.some(a=>a.rigged))phase='rig';
+  if(phase==='rig'&&allRig){phase='fly';beep(180,.5,'sawtooth',.09);}
+  if(phase==='fly'&&!frozen){                   // the motor stops for the break too
+    flown=Math.min(1,flown+.006);
+    if(t%14===0&&flown<1)beep(140,.06,'square',.03);
+    if(flown>=1)phase='foh';
+  }
+  ui();
+  con.live=(phase==='foh');
+  if(!frozen&&con.live&&hit(P,{x:con.x-4,y:con.y-6,w:44,h:34})){
+    // ---- level cleared: bank the score ----
+    const secs=Math.max(0,Math.floor(clock/60));
+    const timeB=secs*PTS_PER_SEC;
+    const lifeB=Math.max(0,hp)*PTS_PER_LIFE;
+    lastBreak={time:timeB,secs:secs,lives:Math.max(0,hp),life:lifeB,clear:PTS_CLEAR,
+               total:timeB+lifeB+PTS_CLEAR};
+    score+=lastBreak.total;
+    state='win';riff();
+    // On the final level the run is over — that's what the board records.
+    if(lvl+1>=LEVELS.length){
+      qualified=0;nameBuf='';
+      boardLoad().then(()=>{
+        if(madeTop10(score)){qualified=1;boardState='entry';}
+      });
+    }
+  }
+}
+
+// ---- draw ----
+function rr(px,py,w,h,f){x.fillStyle=f;x.fillRect(px,py,w,h);}
+
+function drawCone(h,tint){
+  const a=Number.isFinite(h.ang)?h.ang:0;
+  const MAX=430,SL=14;
+  const gx=h.x+Math.sin(a)*MAX,gy=62+Math.cos(a)*MAX;
+  const g=x.createLinearGradient(h.x,62,gx,gy);
+  g.addColorStop(0,tint);g.addColorStop(1,'rgba(200,220,255,0)');
+  x.fillStyle=g;
+  for(let i=0;i<SL;i++){
+    const a0=a+(i/SL-.5)*0.22,a1=a+((i+1)/SL-.5)*0.22;
+    const d=Math.min(beamReach(h,a0,MAX),beamReach(h,a1,MAX));
+    x.beginPath();
+    x.moveTo(h.x+Math.sin(a0)*6,62+Math.cos(a0)*6);
+    x.lineTo(h.x+Math.sin(a1)*6,62+Math.cos(a1)*6);
+    x.lineTo(h.x+Math.sin(a1)*d,62+Math.cos(a1)*d);
+    x.lineTo(h.x+Math.sin(a0)*d,62+Math.cos(a0)*d);
+    x.closePath();x.fill();
+    if(d<MAX-2){
+      x.fillStyle='rgba(255,248,208,.28)';
+      x.fillRect(h.x+Math.sin(a0)*d-1,62+Math.cos(a0)*d-2,6,3);
+      x.fillStyle=g;
+    }
+  }
+  x.save();x.translate(h.x,58);x.rotate(a);
+  rr(-7,0,14,12,'#22272F');rr(-7,0,14,2,'#8B94A3');
+  x.fillStyle='#FFF8D0';x.beginPath();x.arc(0,12,4,0,7);x.fill();
+  x.restore();
+}
+
+/* The jab curve, in one place — three bits of the render read it (front arm,
+   rear counterweight, torso twist) and they must agree or the pose tears.
+   Maps punch progress to arm extension: cock back, SNAP, recoil.
+
+   PUNCH_DUR is only 14 frames, so this is sampled at 14 discrete points —
+   the phase boundaries are picked so those samples actually land on the
+   peak and on zero. A curve that's right in the abstract but never sampled
+   at its extremes gives you a stub-armed punch that snaps back early. */
+function punchExt(){
+  if(P.punch<=0)return 0;
+  const k=1-((P.punch-1)/(PUNCH_DUR-1));  // 0 on the first frame -> 1 on the last
+  if(k<0.16)  return -0.6*(k/0.16);                  // cock the elbow back
+  if(k<0.38)  return -0.6+2.1*((k-0.16)/0.22);       // SNAP — hitbox live here
+  return 1.5*(1-(k-0.38)/0.62);                      // recoil home, reaching 0
+}
+
+function draw(){
+  x.fillStyle='#0E1218';x.fillRect(0,0,W,H);
+  x.strokeStyle='rgba(139,148,163,.13)';x.lineWidth=2;
+  for(let i=0;i<W;i+=48){x.beginPath();x.moveTo(i,0);x.lineTo(i+24,60);x.lineTo(i+48,0);x.stroke();}
+  x.fillStyle='rgba(139,148,163,.2)';x.fillRect(0,58,W,4);
+
+  for(const h of haz){
+    if(h.t==='beam')drawCone(h,'rgba(255,255,255,.26)');
+    if(h.t==='spot')drawCone(h,'rgba(255,236,180,.30)');
+  }
+
+  // flown array
+  const rigged=cabs.filter(a=>a.rigged);
+  if(rigged.length){
+    const groundY=motor.y+250,ay=groundY-(groundY-motor.y-24)*flown;
+    x.strokeStyle='#8B94A3';x.lineWidth=2;
+    x.beginPath();x.moveTo(motor.x,62);x.lineTo(motor.x,ay);x.stroke();
+    rr(motor.x-22,ay,44,5,'#39424F');
+    rigged.forEach((a,i)=>{
+      const yy=ay+6+i*24;
+      x.save();x.translate(motor.x,yy);x.rotate(i*1.5*Math.PI/180);
+      rr(-13,0,26,22,'#22272F');
+      x.strokeStyle=flown>=1?'#3FBF8F':'#8B94A3';x.lineWidth=1.5;x.strokeRect(-12.5,.5,25,21);
+      x.fillStyle='#39424F';x.beginPath();x.arc(0,9,6,0,7);x.fill();
+      x.fillStyle=flown>=1?'#3FBF8F':'#39424F';x.beginPath();x.arc(0,9,2,0,7);x.fill();
+      x.restore();
+    });
+  }
+  rr(motor.x-11,58,22,18,'#2A313B');
+  rr(motor.x-11,58,22,3,'#E8E337');
+  x.fillStyle=phase==='fly'?'#E8E337':(phase==='foh'?'#3FBF8F':'#FF4D3D');
+  x.beginPath();x.arc(motor.x,70,2.5,0,7);x.fill();
+  if(phase==='rig'||phase==='collect'){
+    x.strokeStyle='rgba(232,227,55,.35)';x.setLineDash([6,5]);x.lineWidth=2;
+    x.strokeRect(motor.x-24,motor.y+230,48,20);x.setLineDash([]);
+    x.fillStyle='rgba(232,227,55,.6)';x.font='9px monospace';x.textAlign='center';
+    x.fillText('DROP ZONE',motor.x,motor.y+244);x.textAlign='left';
+  }
+
+  // vertical truss — climbable columns
+  for(const v of truss){
+    const h2=v.y1-v.y0;
+    // two chords with diagonal lacing, like real box truss
+    x.strokeStyle='#6E7684';x.lineWidth=2.5;
+    x.beginPath();x.moveTo(v.x-8,v.y0);x.lineTo(v.x-8,v.y1);
+    x.moveTo(v.x+8,v.y0);x.lineTo(v.x+8,v.y1);x.stroke();
+    x.strokeStyle='#4A5563';x.lineWidth=1.5;
+    for(let yy=v.y0;yy<v.y1-10;yy+=14){
+      x.beginPath();x.moveTo(v.x-8,yy);x.lineTo(v.x+8,yy+7);
+      x.lineTo(v.x-8,yy+14);x.stroke();
+    }
+    // rungs
+    x.strokeStyle='#8B94A3';x.lineWidth=2;
+    for(let yy=v.y0+4;yy<v.y1;yy+=14){
+      x.beginPath();x.moveTo(v.x-8,yy);x.lineTo(v.x+8,yy);x.stroke();
+    }
+    // base plate + tape marker
+    rr(v.x-13,v.y1,26,4,'#39424F');
+    x.fillStyle='rgba(232,227,55,.5)';x.fillRect(v.x-13,v.y1,26,1.5);
+    x.fillStyle='rgba(232,227,55,.45)';x.font='7px monospace';x.textAlign='center';
+    x.fillText('CLIMB',v.x,v.y0-4);x.textAlign='left';
+  }
+
+  // scissor lifts
+  for(const L of lifts){
+    const baseY=L.y1+30;
+    // the scissor stack — X pairs that compress as the deck rises
+    const span=baseY-L.y-8, n=4, seg=span/n;
+    x.strokeStyle='#E8A62F';x.lineWidth=2.5;
+    for(let i=0;i<n;i++){
+      const yA=L.y+8+i*seg, yB=yA+seg;
+      x.beginPath();
+      x.moveTo(L.x-L.w/2+5,yA);x.lineTo(L.x+L.w/2-5,yB);
+      x.moveTo(L.x+L.w/2-5,yA);x.lineTo(L.x-L.w/2+5,yB);
+      x.stroke();
+    }
+    // base
+    rr(L.x-L.w/2-3,baseY,L.w+6,8,'#2A313B');
+    x.fillStyle='#151A21';
+    x.beginPath();x.arc(L.x-L.w/2+4,baseY+9,4,0,7);x.fill();
+    x.beginPath();x.arc(L.x+L.w/2-4,baseY+9,4,0,7);x.fill();
+    // the deck you ride
+    rr(L.x-L.w/2,L.y,L.w,8,'#E8A62F');
+    rr(L.x-L.w/2,L.y,L.w,2.5,'#FFD37A');
+    // guard rail
+    x.strokeStyle='#8B94A3';x.lineWidth=1.5;
+    x.beginPath();
+    x.moveTo(L.x-L.w/2+2,L.y);x.lineTo(L.x-L.w/2+2,L.y-14);
+    x.lineTo(L.x+L.w/2-2,L.y-14);x.lineTo(L.x+L.w/2-2,L.y);
+    x.stroke();
+    // travel beacon
+    if(t%30<15){x.fillStyle='#E8E337';x.beginPath();x.arc(L.x,L.y-17,2.5,0,7);x.fill();}
+  }
+
+  // platforms
+  for(const p of plat){
+    rr(p.x,p.y,p.w,p.h,'#1B222C');
+    rr(p.x,p.y,p.w,3,'#8B94A3');
+    x.strokeStyle='rgba(232,227,55,.35)';x.lineWidth=1;
+    x.strokeRect(p.x+3.5,p.y+3.5,p.w-7,p.h-7);
+    for(let i=8;i<p.w-8;i+=26)rr(p.x+i,p.y+p.h-6,10,3,'#39424F');
+  }
+
+  // hazards
+  for(const h of haz){
+    if(h.t==='pyro'){
+      rr(h.x-6,h.y,12,10,'#39424F');
+      if(h.on)for(let i=0;i<7;i++){
+        const yy=h.y-i*8-6,w=9-i*.9;
+        x.fillStyle=i<2?'#FFF2B0':(i<4?'#E8E337':'#FF4D3D');
+        x.fillRect(h.x-w/2+Math.sin(t/3+i)*2,yy,w,7);
+      }
+    }
+    if(h.t==='ramp'){                       // yellow cable ramp
+      x.fillStyle='#2A313B';
+      x.beginPath();x.moveTo(h.x-14,h.y);x.lineTo(h.x-8,h.y-8);
+      x.lineTo(h.x+8,h.y-8);x.lineTo(h.x+14,h.y);x.closePath();x.fill();
+      x.fillStyle='#E8E337';
+      for(let i=-10;i<10;i+=6)x.fillRect(h.x+i,h.y-8,3,8);
+      x.strokeStyle='#151A21';x.lineWidth=1;x.strokeRect(h.x-14,h.y-8.5,28,8.5);
+    }
+    if(h.t==='fork'){                       // forklift
+      const b=Math.sin(t/6)*.6;
+      rr(h.x-18,h.y-26+b,26,18,'#E8A62F');
+      rr(h.x-18,h.y-26+b,26,3,'#FFD37A');
+      rr(h.x-13,h.y-34+b,14,9,'#22272F');   // cage
+      x.strokeStyle='#8B94A3';x.lineWidth=2;
+      x.beginPath();x.moveTo(h.x+8,h.y-24+b);x.lineTo(h.x+8,h.y-4+b);
+      x.lineTo(h.x+20,h.y-4+b);x.stroke();  // forks
+      x.fillStyle='#151A21';
+      x.beginPath();x.arc(h.x-12,h.y-6,5,0,7);x.fill();
+      x.beginPath();x.arc(h.x+2,h.y-6,5,0,7);x.fill();
+      if(t%40<20){x.fillStyle='#E8E337';x.beginPath();x.arc(h.x-16,h.y-30+b,2.5,0,7);x.fill();}
+    }
+    if(h.t==='hook'){                       // chain motor hook
+      x.strokeStyle=h.warn?'#FF4D3D':'#8B94A3';x.lineWidth=h.warn&&t%8<4?2.5:1.5;
+      x.beginPath();x.moveTo(h.x,62);x.lineTo(h.x,h.hy-12);x.stroke();
+      rr(h.x-9,h.hy-12,18,12,'#39424F');
+      rr(h.x-9,h.hy-12,18,3,'#8B94A3');
+      x.strokeStyle='#8B94A3';x.lineWidth=3;x.lineCap='round';
+      x.beginPath();x.arc(h.x,h.hy+4,5,.4,4.2);x.stroke();
+      if(h.warn&&t%10<5){
+        x.fillStyle='#FF4D3D';x.font='bold 10px monospace';x.textAlign='center';
+        x.fillText('▼',h.x,80);x.textAlign='left';
+      }
+    }
+    if(h.t==='conf'){                       // confetti cannon
+      x.save();x.translate(h.x,414);x.rotate(-.35);
+      rr(-6,-20,12,22,h.warn&&t%6<3?'#FF4D3D':'#39424F');
+      rr(-6,-20,12,3,'#8B94A3');
+      x.restore();
+      rr(h.x-9,414,18,8,'#22272F');
+      if(h.warn&&t%10<5){
+        x.fillStyle='#FF4D3D';x.font='bold 10px monospace';x.textAlign='center';
+        x.fillText('!',h.x,392);x.textAlign='left';
+      }
+    }
+    if(h.t==='guest'){                      // drunk guest — lanyard, beer, staggering
+      const ko=h.ko>0;
+      if(ko){
+        // Flat on his back. Rotate the whole body 90° the way the punch sent
+        // him, and let him twitch back to life as the timer runs out.
+        const rousing=h.ko<70&&t%8<4;       // starting to come round
+        x.save();
+        x.translate(h.x,h.y);
+        x.rotate((h.kdir>0?1:-1)*(Math.PI/2)+(rousing?Math.sin(t*.6)*.09:0));
+        rr(-6,-22,12,14,'#5E3A6B');         // shirt, dimmed — he's down
+        rr(-6,-22,12,2,'#7A4B8C');
+        x.fillStyle='#2E8A68';x.fillRect(-1,-22,2,7);
+        rr(-2,-15,4,3,'#9B8F1F');
+        rr(-4,-8,3,8,'#22272F');rr(1,-8,3,8,'#22272F');
+        rr(-4,-30,8,8,'#A87E52');
+        rr(-4,-30,8,2,'#3A2A1F');
+        rr(-2,-27,4,1,'#0A0C10');           // eyes shut — one flat line
+        x.restore();
+        // spilled beer pooling under him
+        x.fillStyle='rgba(232,227,55,.22)';
+        x.beginPath();x.ellipse(h.x+h.kdir*10,h.y-1,11,2.5,0,0,7);x.fill();
+        // little stars while he's out
+        for(let i=0;i<3;i++){
+          const a2=t/14+i*2.1;
+          x.fillStyle=`rgba(232,227,55,${rousing?.35:.7})`;
+          x.font='8px monospace';x.textAlign='center';
+          x.fillText('✦',h.x+Math.cos(a2)*11,h.y-34+Math.sin(a2)*4);
+        }
+        x.textAlign='left';
+        if(!rousing){
+          x.fillStyle='rgba(139,148,163,.5)';x.font='7px monospace';x.textAlign='center';
+          x.fillText('zzz',h.x+14,h.y-40);x.textAlign='left';
+        }
+      }else{
+      x.save();x.translate(h.x,h.y);x.rotate(Math.sin(h.wob*.8)*.12);
+      rr(-6,-22,12,14,'#7A4B8C');           // untucked shirt
+      rr(-6,-22,12,2,'#9B6BAD');
+      x.fillStyle='#3FBF8F';x.fillRect(-1,-22,2,7);   // lanyard
+      rr(-2,-15,4,3,'#E8E337');             // laminate
+      rr(-4,-8,3,8,'#2A313B');rr(1,-8,3,8,'#2A313B');
+      rr(-4,-30,8,8,'#C99C6E');
+      rr(-4,-30,8,2,'#4A3428');
+      rr(h.dir>0?2:-4,-27,2,2,'#0A0C10');
+      x.save();x.rotate(Math.sin(h.wob*1.3)*.3);      // beer, tipping
+      rr(5,-20,5,7,'#E8E337');
+      x.fillStyle='rgba(255,255,255,.5)';x.fillRect(5,-20,5,1.5);
+      x.restore();
+      x.restore();
+      if(Math.sin(h.wob*.5)>.9){
+        x.fillStyle='rgba(232,227,55,.6)';x.font='7px monospace';x.textAlign='center';
+        x.fillText('hic',h.x+11,h.y-34);x.textAlign='left';
+      }
+      }
+    }
+    if(h.t==='case'){                       // stagehand pushing a road case
+      if(h.warn){
+        if(t%10<5){
+          x.fillStyle='#FF4D3D';x.font='bold 11px monospace';x.textAlign='center';
+          const ex=h.dir>0?h.lane[0]+70:h.lane[1]-70;
+          x.fillText(h.dir>0?'HEADS UP →':'← HEADS UP',Math.max(60,Math.min(W-60,ex)),h.y-44);
+          x.textAlign='left';
+        }
+      }else if(!h.gone){
+        const cx=h.cx, f=h.dir;
+        // the hand, leaning into it
+        const hx=cx-f*34;
+        x.save();x.translate(hx,h.y);x.rotate(f*.12);
+        rr(-5,-22,10,13,'#2A3A4A');
+        rr(-5,-22,10,2,'#3D5266');
+        rr(-4,-9,3,9,'#22272F');rr(1,-9,3,9,'#22272F');
+        rr(-4,-30,8,8,'#B98C5E');
+        rr(-4,-30,8,2,'#2A313B');
+        x.strokeStyle='#2A3A4A';x.lineWidth=2.5;x.lineCap='round';
+        x.beginPath();x.moveTo(0,-19);x.lineTo(f*9,-16);x.stroke();   // arms out
+        x.restore();
+        // the case
+        rr(cx-24,h.y-30,48,30,'#161B22');
+        rr(cx-24,h.y-30,48,3,'#39424F');
+        x.strokeStyle='#8B94A3';x.lineWidth=2;
+        x.strokeRect(cx-23,h.y-29,46,28);
+        // corner caps + latches
+        ['#39424F'].forEach(()=>{});
+        rr(cx-24,h.y-30,6,6,'#39424F');rr(cx+18,h.y-30,6,6,'#39424F');
+        rr(cx-24,h.y-6,6,6,'#39424F');rr(cx+18,h.y-6,6,6,'#39424F');
+        rr(cx-3,h.y-20,6,5,'#8B94A3');
+        // hazard stripe
+        x.fillStyle='#E8E337';
+        for(let i=-18;i<18;i+=8)x.fillRect(cx+i,h.y-16,4,3);
+        // castors, spinning
+        x.fillStyle='#0A0C10';
+        [-16,16].forEach(o=>{
+          x.beginPath();x.arc(cx+o,h.y+2,4.5,0,7);x.fill();
+          x.strokeStyle='#8B94A3';x.lineWidth=1;
+          x.beginPath();
+          x.moveTo(cx+o,h.y+2);
+          x.lineTo(cx+o+Math.cos(h.roll)*4,h.y+2+Math.sin(h.roll)*4);
+          x.stroke();
+        });
+      }
+    }
+    if(h.t==='wall'){
+      x.save();x.translate(h.x,h.y);
+      x.rotate(h.dir*(Math.PI/2)*h.fall+(h.teeter?Math.sin(t*.9)*.05*h.dir:0));
+      rr(-h.w/2,-h.h,h.w,h.h,'#161B22');
+      for(let py=-h.h+3;py<-3;py+=9)for(let px=-h.w/2+3;px<h.w/2-3;px+=8){
+        x.fillStyle=h.teeter?(t%8<4?'#FF4D3D':'#39424F')
+          :(Math.sin(t/12+px*.4+py*.2)>.2?'#2D6CD8':'#1E2836');
+        x.fillRect(px,py,5,6);
+      }
+      x.strokeStyle=h.teeter?'#FF4D3D':'#39424F';x.lineWidth=1.5;
+      x.strokeRect(-h.w/2+.5,-h.h+.5,h.w-1,h.h-1);
+      rr(-h.w/2-3,-4,h.w+6,4,'#39424F');
+      x.restore();
+      if(h.teeter&&t%10<5){
+        x.fillStyle='#FF4D3D';x.font='bold 10px monospace';x.textAlign='center';
+        x.fillText('!',h.x,h.y-h.h-8);x.textAlign='left';
+      }
+    }
+  }
+
+  // loose cabs
+  for(const a of cabs){
+    if(a.got||a.rigged)continue;
+    const yy=a.y+Math.sin(a.bob)*3;
+    rr(a.x,yy,22,26,'#22272F');
+    x.strokeStyle='#3FBF8F';x.lineWidth=1.5;x.strokeRect(a.x+.5,yy+.5,21,25);
+    x.fillStyle='#39424F';x.beginPath();x.arc(a.x+11,yy+10,6.5,0,7);x.fill();
+    x.fillStyle='#3FBF8F';x.beginPath();x.arc(a.x+11,yy+10,2.2,0,7);x.fill();
+    rr(a.x+6,yy+20,10,3,'#39424F');
+  }
+
+  // energy drink
+  if(drink&&!drink.got){
+    const yy=drink.y+Math.sin(drink.bob)*4;
+    const pulse=.5+Math.abs(Math.sin(drink.bob*.8))*.5;
+    x.fillStyle=`rgba(232,227,55,${.18*pulse})`;
+    x.beginPath();x.arc(drink.x+7,yy+10,15,0,7);x.fill();
+    rr(drink.x,yy,14,20,'#22272F');
+    rr(drink.x,yy,14,4,'#E8E337');
+    x.fillStyle='#E8E337';
+    for(let i=0;i<3;i++)x.fillRect(drink.x+3+i*4,yy+7,2,9);
+    x.strokeStyle='#3FBF8F';x.lineWidth=1;x.strokeRect(drink.x+.5,yy+.5,13,19);
+    x.fillStyle='rgba(232,227,55,.9)';x.font='7px monospace';x.textAlign='center';
+    x.fillText('AMP',drink.x+7,yy-5);x.textAlign='left';
+  }
+
+  // extra life — a road-case heart with a rigging shackle, pulsing like a beat
+  if(heart&&!heart.got){
+    const yy=heart.y+Math.sin(heart.bob)*4;
+    const beat=Math.abs(Math.sin(heart.bob*1.6));
+    const rad=13+beat*4;
+    const gH=x.createRadialGradient(heart.x+8,yy+9,2,heart.x+8,yy+9,rad);
+    gH.addColorStop(0,`rgba(255,77,61,${.30+beat*.18})`);
+    gH.addColorStop(1,'rgba(255,77,61,0)');
+    x.fillStyle=gH;
+    x.beginPath();x.arc(heart.x+8,yy+9,rad,0,7);x.fill();
+    // chunky pixel heart — reads at this size where a curve wouldn't
+    const px=(cx,cy,w,h,c)=>{x.fillStyle=c;x.fillRect(heart.x+cx,yy+cy,w,h);};
+    const R='#FF4D3D', HL='#FF8C7A', SH='#B32A20';
+    px(2,2,4,3,R);  px(10,2,4,3,R);
+    px(1,5,14,4,R);
+    px(2,9,12,3,R);
+    px(4,12,8,2,R);
+    px(6,14,4,2,SH);
+    px(2,3,2,2,HL); px(5,3,2,1,HL);        // specular highlight
+    px(1,8,14,1,SH);                        // underside shading
+    x.strokeStyle='#8B94A3';x.lineWidth=1.5; // shackle, like it's ready to fly
+    x.beginPath();x.arc(heart.x+8,yy+1,3,3.6,5.8);x.stroke();
+    x.fillStyle='rgba(255,77,61,.9)';x.font='7px monospace';x.textAlign='center';
+    x.fillText('1UP',heart.x+8,yy-6);x.textAlign='left';
+  }
+
+  // console
+  const live=con.live;
+  rr(con.x,con.y+8,40,22,live?'#1E3A31':'#22272F');
+  x.strokeStyle=live?'#3FBF8F':'#39424F';x.lineWidth=2;x.strokeRect(con.x+1,con.y+9,38,20);
+  for(let i=0;i<5;i++){
+    const on=live&&Math.sin(t/6+i)>0;
+    rr(con.x+5+i*7,con.y+12,3,10,on?'#3FBF8F':'#39424F');
+    rr(con.x+5+i*7,con.y+12+(live?Math.abs(Math.sin(t/9+i))*7:7),3,3,'#E8E337');
+  }
+  x.fillStyle=live?'#E8E337':'#39424F';x.font='9px monospace';
+  x.fillText(live?'FOH ▸ GO':'FOH ▸ NO',con.x,con.y+4);
+
+  // ---- UNION 15: crew, table, coffee ----
+  if(union.on){
+    // coffee table
+    const tx=union.table;
+    rr(tx-26,398,52,4,'#8B94A3');
+    rr(tx-22,402,4,10,'#39424F');rr(tx+18,402,4,10,'#39424F');
+    // urn
+    rr(tx-6,384,12,14,'#2A313B');
+    rr(tx-6,384,12,3,'#8B94A3');
+    x.fillStyle='#FF4D3D';x.fillRect(tx+3,390,2,4);
+    // steam
+    for(let i=0;i<3;i++){
+      x.fillStyle=`rgba(200,205,215,${.25-i*.06})`;
+      x.fillRect(tx-2+Math.sin(t/18+i)*3,378-i*6,2,4);
+    }
+    // the crew
+    for(const m of union.crew){
+      const sit=m.seated?4:0;
+      const sw=m.seated?Math.sin(m.sip)*1.2:0;
+      x.save();x.translate(m.x,m.y+sit);
+      rr(-5,-20,10,12,'#2A3A4A');            // crew shirt
+      rr(-5,-20,10,2,'#3D5266');
+      if(m.seated){
+        rr(-5,-8,4,8,'#22272F');rr(1,-8,4,8,'#22272F');   // sitting legs out
+      }else{
+        rr(-4,-8,3,8,'#22272F');rr(1,-8,3,8,'#22272F');
+      }
+      rr(-4,-28,8,8,'#B98C5E');
+      rr(-4,-28,8,2,'#2A313B');
+      rr(m.f>0?2:-4,-25,2,2,'#0A0C10');
+      if(m.seated){                          // coffee cup, raised to sip
+        x.save();x.rotate(sw*.12);
+        rr(m.f>0?5:-9,-18,4,5,'#E8E337');
+        x.fillStyle='#FFF';x.fillRect(m.f>0?5:-9,-18,4,1);
+        x.restore();
+      }
+      x.restore();
+    }
+    // the call
+    const pulse=t%60<30;
+    x.fillStyle='rgba(10,12,16,.72)';x.fillRect(0,96,W,54);
+    x.fillStyle=pulse?'#E8E337':'#FF4D3D';
+    x.font='bold 30px monospace';x.textAlign='center';
+    x.fillText('★ UNION 15 ★',W/2,126);
+    x.fillStyle='#8B94A3';x.font='12px monospace';
+    const near=Math.abs(P.x+P.w/2-union.table)<70&&P.gr;
+    x.fillText(union.allSeated
+      ?(near?'TAKE YOUR BREAK. NOBODY WORKS.':'GET OVER THERE AND SIT DOWN')
+      :'CREW IS WALKING OUT…',W/2,144);
+    x.textAlign='left';
+    // sit timer
+    if(union.sat>0){
+      const k=union.sat/UNION_SIT;
+      rr(W/2-90,156,180,10,'#22272F');
+      rr(W/2-89,157,178*k,8,'#3FBF8F');
+      x.fillStyle='#3FBF8F';x.font='bold 10px monospace';x.textAlign='center';
+      x.fillText(Math.ceil((UNION_SIT-union.sat)/60)+'s',W/2,176);
+      x.textAlign='left';
+    }
+  }
+
+  // ---- player ----
+  if(!(P.inv>0&&t%8<4)){
+    const px=Math.round(P.x),py=Math.round(P.y),f=P.f;
+    const run=Math.abs(P.vx)>.4&&P.gr&&!P.climb;
+    const a=P.anim,spd=Math.min(Math.abs(P.vx)/4.5,1);
+    const bob=run?Math.round(Math.abs(Math.sin(a))*-1.6):0;
+    // Torso twists into the jab — an arm thrown from a static body reads as
+    // a shove. Peaks with the snap, unwinds on the recoil.
+    const twist=P.punch>0?f*punchExt()*4.5:0;
+    const lean=P.climb?0:(run?f*spd*2:(!P.gr?f*1.5:0));
+
+    if(boost>0){                              // wired: pulsing aura + afterimages
+      const k=boost<90?boost/90:1;            // fades out as it expires
+      const beat=Math.sin(t/3.5);             // the pulse
+      const low=boost<120;
+      // outer aura, breathing
+      const rad=22+beat*5;
+      const gA=x.createRadialGradient(px+8,py+13,2,px+8,py+13,rad);
+      gA.addColorStop(0,`rgba(232,227,55,${.30*k})`);
+      gA.addColorStop(.6,`rgba(232,227,55,${.10*k})`);
+      gA.addColorStop(1,'rgba(232,227,55,0)');
+      x.fillStyle=gA;
+      x.beginPath();x.arc(px+8,py+13,rad,0,7);x.fill();
+      // ring that snaps outward on each pulse
+      x.strokeStyle=`rgba(255,255,255,${(.35+beat*.25)*k})`;x.lineWidth=1.5;
+      x.beginPath();x.arc(px+8,py+13,16+beat*4,0,7);x.stroke();
+      // afterimages trailing the direction of travel
+      for(let i=1;i<4;i++){
+        x.strokeStyle=`rgba(63,191,143,${(.45/i)*k})`;x.lineWidth=1;
+        x.strokeRect(px-f*i*6,py+bob,16,26);
+      }
+      // crackle sparks
+      for(let i=0;i<3;i++){
+        const a2=t/5+i*2.1, r2=14+Math.sin(t/4+i)*6;
+        x.fillStyle=low&&t%6<3?'#FF4D3D':'#E8E337';
+        x.fillRect(px+8+Math.cos(a2)*r2,py+13+Math.sin(a2)*r2,2,2);
+      }
+    }
+    if(run&&spd>.6){
+      x.strokeStyle='rgba(139,148,163,.22)';x.lineWidth=1;
+      for(let i=0;i<3;i++){
+        const sy=py+8+i*7;x.beginPath();
+        x.moveTo(px+(f>0?-3:19),sy);x.lineTo(px+(f>0?-3:19)-f*(8+i*4),sy);x.stroke();
+      }
+    }
+
+    x.save();
+    x.translate(px+8,py+bob);
+    x.rotate((P.stun>0?Math.sin(t*.8)*8:lean+twist)*Math.PI/180);
+    x.translate(-8,0);
+    const wired=boost>0, wb=wired?(Math.sin(t/3.5)*.5+.5):0;   // 0..1 pulse
+    const BLK=wired?(wb>.5?'#3A3A22':'#252519'):'#14181E';
+    const BLK2=wired?(wb>.5?'#2A2A16':'#16160E'):'#0B0E12';
+    const RIM=wired?(wb>.5?'#FFF7A0':'#E8E337'):'#4A5563';
+    const SKIN='#C99C6E';
+
+    const drawLeg=(ph,shade)=>{
+      const hipX=8,hipY=21;
+      const swing=Math.sin(ph)*(run?7*spd:0);
+      const lift=run?Math.max(0,Math.cos(ph))*4*spd:0;
+      x.strokeStyle=shade;x.lineWidth=3.4;x.lineCap='round';
+      x.beginPath();x.moveTo(hipX,hipY);
+      x.lineTo(hipX+swing*.55+f*1,hipY+4-lift*.5);
+      x.lineTo(hipX+swing,hipY+9-lift);x.stroke();
+      x.lineWidth=2.6;x.strokeStyle=BLK2;
+      x.beginPath();x.moveTo(hipX+swing,hipY+9-lift);
+      x.lineTo(hipX+swing+f*2.5,hipY+9.5-lift);x.stroke();
+    };
+    if(P.climb){
+      // ladder pose: opposite arm/leg reach, alternating on each rung
+      const c=Math.sin(P.cph), c2=Math.cos(P.cph);
+      x.strokeStyle=BLK2;x.lineWidth=3.4;x.lineCap='round';
+      x.beginPath();x.moveTo(8,21);x.lineTo(8-5,21+5+c*3);x.stroke();   // back leg
+      x.strokeStyle=BLK2;x.lineWidth=2.8;
+      x.beginPath();x.moveTo(8,13);x.lineTo(8-6,7-c*4);x.stroke();      // back arm
+    }
+    else if(P.gr)drawLeg(a+Math.PI,BLK2);
+    else{x.strokeStyle=BLK2;x.lineWidth=3.4;x.lineCap='round';
+      x.beginPath();x.moveTo(8,21);x.lineTo(8-f*3,25);x.lineTo(8-f*6,26);x.stroke();}
+
+    if(P.punch>0){
+      // off arm pulls back as a counterweight — a jab with a dead rear arm
+      // reads as a shove
+      const ext=punchExt();
+      x.strokeStyle=BLK2;x.lineWidth=2.8;x.lineCap='round';
+      x.beginPath();
+      x.moveTo(8,13);
+      x.lineTo(8-f*(2+ext*2.2),16);
+      x.lineTo(8-f*(3.5+ext*4.5),17.5);
+      x.stroke();
+    }
+    else if(P.hold>0){
+      x.strokeStyle=BLK2;x.lineWidth=2.8;x.lineCap='round';
+      x.beginPath();x.moveTo(8,13);x.lineTo(8+f*5,10);x.stroke();
+    }else if(run){
+      const ap=a+Math.PI;
+      x.strokeStyle=BLK2;x.lineWidth=2.8;x.lineCap='round';
+      x.beginPath();x.moveTo(8,13);x.lineTo(8+Math.sin(ap)*4.5,17);
+      x.lineTo(8+Math.sin(ap)*8*spd,18+Math.cos(ap)*2);x.stroke();
+    }
+
+    rr(2,10,12,12,BLK);
+    x.fillStyle=RIM;x.fillRect(f>0?13:2,10,1,12);
+    x.fillStyle='rgba(139,148,163,.14)';x.fillRect(2,10,12,1);
+    rr(2,19,12,2.5,BLK2);
+    rr(f>0?3:11,19,2,2.5,'#3FBF8F');
+    x.fillStyle='#E8E337';x.fillRect(2,16,12,1.2);
+
+    rr(4,2,8,8,SKIN);
+    x.fillStyle='rgba(0,0,0,.18)';x.fillRect(4,2,f>0?3:8,8);
+    rr(4,2,8,2.5,BLK2);
+    rr(f>0?12:2,5,2,2,'#0A0C10');
+    rr(2,3,2,5,BLK2);rr(12,3,2,5,BLK2);
+    rr(2,1,12,2,BLK2);
+    x.fillStyle=RIM;x.fillRect(2,1,12,.8);
+    x.strokeStyle=BLK2;x.lineWidth=1;
+    x.beginPath();x.moveTo(f>0?13:3,7);x.lineTo(f>0?15:1,9);x.stroke();
+    x.fillStyle='#3FBF8F';x.fillRect(f>0?14.5:.5,8.5,1.5,1.5);
+
+    if(P.climb){
+      const c=Math.sin(P.cph);
+      x.strokeStyle=BLK;x.lineWidth=3.4;x.lineCap='round';
+      x.beginPath();x.moveTo(8,21);x.lineTo(8+5,21+5-c*3);x.stroke();   // front leg
+      x.strokeStyle=BLK;x.lineWidth=2.8;
+      x.beginPath();x.moveTo(8,13);x.lineTo(8+6,7+c*4);x.stroke();      // front arm
+      // hands gripping the rung
+      x.fillStyle=SKIN;
+      x.fillRect(8+5,6+c*4,3,2.5);
+      x.fillRect(8-8,6-c*4,3,2.5);
+    }
+    else if(P.gr)drawLeg(a,BLK);
+    else{x.strokeStyle=BLK;x.lineWidth=3.4;x.lineCap='round';
+      x.beginPath();x.moveTo(8,21);x.lineTo(8+f*3,26);x.lineTo(8+f*6,26);x.stroke();}
+    if(P.climb){/* arms already drawn in the ladder pose */}
+    else if(P.punch>0){
+      // ── the jab ──
+      // Extension peaks right as the hitbox goes live in step().
+      const ext=punchExt();
+      const reach=ext*9;
+      const sy=13-ext*1.2;                  // shoulder lifts slightly with the throw
+      x.strokeStyle=BLK;x.lineWidth=2.9;x.lineCap='round';
+      x.beginPath();
+      x.moveTo(8,13);
+      // elbow trails the fist so the arm bends instead of going rigid
+      x.lineTo(8+f*(reach*0.55),sy+1.5-Math.abs(ext)*0.8);
+      x.lineTo(8+f*reach,sy);
+      x.stroke();
+      // fist
+      x.fillStyle=SKIN;
+      x.beginPath();x.arc(8+f*reach,sy,2.4,0,7);x.fill();
+      // impact spark at full extension
+      if(ext>1.15){
+        x.strokeStyle='rgba(232,227,55,.85)';x.lineWidth=1.4;
+        for(let i=0;i<3;i++){
+          const ang=(i-1)*0.5;
+          x.beginPath();
+          x.moveTo(8+f*(reach+2),sy+Math.sin(ang)*2);
+          x.lineTo(8+f*(reach+5.5),sy+Math.sin(ang)*4.5);
+          x.stroke();
+        }
+      }
+    }
+    else if(P.hold>0){
+      x.strokeStyle=BLK;x.lineWidth=2.8;x.lineCap='round';
+      x.beginPath();x.moveTo(8,13);x.lineTo(8+f*5,10);x.stroke();
+    }else if(run){
+      x.strokeStyle=BLK;x.lineWidth=2.8;x.lineCap='round';
+      x.beginPath();x.moveTo(8,13);x.lineTo(8+Math.sin(a)*4.5,17);
+      x.lineTo(8+Math.sin(a)*8*spd,18+Math.cos(a)*2);x.stroke();
+    }else{
+      x.strokeStyle=BLK;x.lineWidth=2.8;x.lineCap='round';
+      x.beginPath();x.moveTo(8,13);x.lineTo(8+f*4,P.gr?18:12);x.stroke();
+    }
+    x.restore();
+
+    const beams=haz.filter(h=>h.t==='beam'||h.t==='spot');
+    if(beams.length&&boost<=0&&beams.every(h=>inShadow(h,P.x+P.w/2,P.y+2))){
+      x.fillStyle='rgba(63,191,143,.7)';x.font='8px monospace';x.textAlign='center';
+      x.fillText('COVERED',px+8,py-4+bob);x.textAlign='left';
+    }
+    for(let i=0;i<P.hold;i++){
+      const cy=py-10-i*15+bob;
+      rr(px+1,cy,16,14,'#22272F');
+      x.strokeStyle='#3FBF8F';x.lineWidth=1;x.strokeRect(px+1.5,cy+.5,15,13);
+      x.fillStyle='#39424F';x.beginPath();x.arc(px+9,cy+6,4,0,7);x.fill();
+    }
+  }
+
+  // confetti over everything
+  for(const q of parts){x.fillStyle=q.c;x.fillRect(q.x,q.y,q.r,q.r*.6);}
+  if(fog>0){
+    const k=Math.min(1,fog/150);
+    x.fillStyle=`rgba(200,205,215,${.30*k})`;x.fillRect(0,0,W,H);
+  }
+  if(blind>0){
+    const k=Math.min(1,blind/34);
+    x.fillStyle=`rgba(255,255,255,${.5*k*k})`;x.fillRect(0,0,W,H);
+    if(blind>8){x.fillStyle='#0A0C10';x.font='bold 13px monospace';x.textAlign='center';
+      x.fillText('BLINDED — FIND COVER',W/2,40);x.textAlign='left';}
+  }
+  if(flash>0){x.fillStyle=`rgba(255,77,61,${flash/34})`;x.fillRect(0,0,W,H);}
+
+  // HUD
+  x.fillStyle='rgba(232,227,55,.75)';x.font='11px monospace';
+  x.fillText(phase==='collect'?'▸ GRAB CABS (2 MAX)':phase==='rig'?'▸ HAUL TO THE MOTOR'
+    :phase==='fly'?'▸ FLYING THE ARRAY — STAY CLEAR':'▸ ARRAY IS UP. GET TO FOH.',10,74);
+  // track name — flashes up briefly whenever M changes it
+  if(musNote>0){
+    musNote--;
+    const k=Math.min(1,musNote/45);
+    x.font='bold 10px monospace';x.textAlign='center';
+    x.fillStyle=`rgba(139,148,163,${.7*k})`;
+    x.fillText('♪ ' + (MUS.on?('TRACK '+(MUS.track+1)+'/'+TRACKS.length+' — '+CUR().name):'MUSIC OFF'),W/2,H-14);
+    x.textAlign='left';
+  }
+  // level clock bar — turns red and pulses in the last 10s
+  {
+    const k=Math.max(0,clock/LEVEL_TIME), low=clock<=600&&clock>0, out=clock<=0;
+    rr(10,80,140,7,'#22272F');
+    rr(11,81,138*k,5,union.on?'#39424F':(low&&t%8<4?'#FF4D3D':'#3FBF8F'));
+    x.fillStyle=union.on?'#39424F':(out?'#39424F':(low?'#FF4D3D':'#8B94A3'));
+    x.font='bold 9px monospace';
+    x.fillText(union.on?'CLOCK STOPPED':(out?'NO TIME BONUS':Math.ceil(clock/60)+'s'),156,87);
+  }
+  if(boost>0){                                // boost timer bar
+    const k=boost/BOOST_MAX;
+    const low=boost<120;                      // last 2s — warn you
+    rr(W-134,66,120,8,'#22272F');
+    rr(W-133,67,118*k,6,low&&t%8<4?'#FF4D3D':'#E8E337');
+    x.fillStyle=low&&t%8<4?'#FF4D3D':'#E8E337';
+    x.font='bold 9px monospace';x.textAlign='right';
+    x.fillText('WIRED',W-14,62);x.textAlign='left';
+  }
+
+  // ── shared leaderboard panel, drawn on both end screens ──
+  function drawBoard(cy){
+    x.textAlign='center';
+    x.fillStyle='#8B94A3';x.font='bold 11px monospace';
+    x.fillText(boardMode==='server'?'TOP 10 — LIVE'
+      :boardMode==='artifact'?'TOP 10 — SHARED'
+      :'TOP 10 — LOCAL ONLY (NO SERVER)',W/2,cy);
+    if(boardState==='loading'){
+      x.fillStyle='#39424F';x.font='10px monospace';
+      x.fillText('loading…',W/2,cy+16);return;
+    }
+    if(!board.length){
+      x.fillStyle='#39424F';x.font='10px monospace';
+      x.fillText('no scores yet — be the first',W/2,cy+16);return;
+    }
+    x.font='10px monospace';
+    board.slice(0,10).forEach((e,i)=>{
+      const yy=cy+15+i*13;
+      const mine=qualified&&e.name===(nameBuf.trim()||'ANON')&&e.score===score;
+      x.fillStyle=mine?'#E8E337':(i<3?'#3FBF8F':'#8B94A3');
+      x.textAlign='right'; x.fillText((i+1)+'.',W/2-108,yy);
+      x.textAlign='left';  x.fillText(String(e.name||'ANON').slice(0,12),W/2-98,yy);
+      x.textAlign='right'; x.fillText(String(e.score),W/2+70,yy);
+      x.fillStyle='#39424F';
+      x.fillText('L'+(e.lvl||'?'),W/2+108,yy);
+    });
+    x.textAlign='left';
+  }
+  // ── name entry prompt ──
+  function drawEntry(cy){
+    x.textAlign='center';
+    x.fillStyle='#E8E337';x.font='bold 15px monospace';
+    x.fillText('TOP 10! ENTER YOUR NAME',W/2,cy);
+    const bw=200;
+    x.fillStyle='#22272F';x.fillRect(W/2-bw/2,cy+10,bw,26);
+    x.strokeStyle='#E8E337';x.lineWidth=2;x.strokeRect(W/2-bw/2,cy+10,bw,26);
+    x.fillStyle='#E8E337';x.font='bold 15px monospace';
+    x.fillText(nameBuf+(t%40<20?'_':' '),W/2,cy+29);
+    x.fillStyle='#8B94A3';x.font='10px monospace';
+    x.fillText(boardState==='saving'?'saving…':'TYPE, THEN ENTER',W/2,cy+50);
+    x.textAlign='left';
+  }
+
+  if(state==='win'){
+    x.fillStyle='rgba(10,12,16,.9)';x.fillRect(0,0,W,H);
+    x.textAlign='center';
+    const done=lvl+1>=LEVELS.length;
+    x.fillStyle='#E8E337';x.font='bold 30px monospace';
+    x.fillText(done?'TOUR COMPLETE':'SOUND IS GOOD',W/2,52);
+    // score breakdown
+    if(lastBreak){
+      x.font='11px monospace';
+      const rows=[
+        ['TIME LEFT  '+lastBreak.secs+'s', '+'+lastBreak.time],
+        ['LIVES  '+lastBreak.lives+' x '+PTS_PER_LIFE, '+'+lastBreak.life],
+        ['CLEAR BONUS', '+'+lastBreak.clear],
+      ];
+      rows.forEach((r,i)=>{
+        const yy=78+i*15;
+        x.fillStyle='#8B94A3';x.textAlign='right';x.fillText(r[0],W/2-8,yy);
+        x.fillStyle='#3FBF8F';x.textAlign='left';x.fillText(r[1],W/2+12,yy);
+      });
+      x.strokeStyle='#39424F';x.lineWidth=1;
+      x.beginPath();x.moveTo(W/2-120,130);x.lineTo(W/2+120,130);x.stroke();
+      x.fillStyle='#8B94A3';x.font='11px monospace';x.textAlign='right';
+      x.fillText('LEVEL',W/2-8,144);
+      x.fillStyle='#E8E337';x.textAlign='left';x.fillText('+'+lastBreak.total,W/2+12,144);
+    }
+    x.fillStyle='#E8E337';x.font='bold 18px monospace';x.textAlign='center';
+    x.fillText('RUN SCORE  '+score,W/2,170);
+
+    if(boardState==='entry'){ drawEntry(196); }
+    else if(done){ drawBoard(196); x.fillStyle='#3FBF8F';x.font='12px monospace';x.textAlign='center';
+      x.fillText('SPACE TO LOAD IN AGAIN',W/2,H-24); }
+    else{
+      x.fillStyle='#3FBF8F';x.font='13px monospace';
+      x.fillText('DOORS IN 30 — SPACE FOR NEXT SHOW',W/2,214);
+      for(let i=0;i<24;i++){const h2=(Math.abs(Math.sin(t/7+i))*54)|0;
+        x.fillStyle=h2>40?'#FF4D3D':'#3FBF8F';x.fillRect(W/2-190+i*16,330-h2,10,h2);}
+    }
+    x.textAlign='left';
+  }
+  if(state==='dead'){
+    x.fillStyle='rgba(10,12,16,.92)';x.fillRect(0,0,W,H);
+    x.textAlign='center';
+    x.fillStyle='#FF4D3D';x.font='bold 34px monospace';
+    x.fillText('NO SIGNAL',W/2,64);
+    x.fillStyle='#E8E337';x.font='bold 16px monospace';
+    x.fillText('RUN SCORE  '+score,W/2,94);
+    if(boardState==='entry'){ drawEntry(126); }
+    else{
+      drawBoard(126);
+      x.fillStyle='#8B94A3';x.font='12px monospace';x.textAlign='center';
+      x.fillText('PRESS R TO LOAD IN AGAIN — BACK TO SHOW 1',W/2,H-24);
+    }
+    x.textAlign='left';
+  }
+}
+load(0);
+sideStart();
+(function loop(){step();draw();requestAnimationFrame(loop)})();
+</script>
+</body>
+</html>

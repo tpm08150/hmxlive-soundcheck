@@ -1,0 +1,6 @@
+node_modules/
+.netlify/
+.DS_Store
+
+# Local safety copies taken before edits — not part of the site.
+*.backup-*
