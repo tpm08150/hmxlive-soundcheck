@@ -94,6 +94,42 @@
   #nameSave{padding:16px;background:var(--tape);color:var(--house);border:0;
     font-family:'Bungee',cursive;font-size:15px;cursor:pointer}
 
+  /* ── turned sideways ─────────────────────────────────────────────
+     Portrait sizes the canvas by width, which on a phone on its side (812x375)
+     makes it about 406px tall — taller than the screen — so the game filled the
+     view and the controls sat below the fold.
+
+     Sideways it is sized by HEIGHT instead. The leaderboard and the legend are
+     hidden: neither fits, and neither is something you need mid-show. Not
+     conditioned on the pointer, because a short landscape window wants this
+     whatever is pointing at it. */
+  @media (orientation:landscape) and (max-height:560px){
+    body{padding:4px;min-height:auto;align-items:flex-start}
+    .rig{max-width:none}
+    header{margin-bottom:4px;padding-bottom:4px;gap:8px}
+    h1{font-size:13px}
+    .sub{display:none}
+    .meters{gap:9px;font-size:9px}
+    .legend,.side{display:none}
+    .stage{gap:0}
+    .play{width:100%}
+
+    canvas{height:calc(100vh - 44px);height:calc(100dvh - 44px);
+      width:auto;max-width:100%;margin:0 auto}
+  }
+
+  /* The pads only exist on a touch screen, so their sideways layout stays
+     behind the same condition that makes them appear at all. Out of the flow,
+     into the bottom corners, under the thumbs. */
+  @media (hover:none) and (pointer:coarse) and (orientation:landscape) and (max-height:560px){
+    .touch{position:fixed;left:0;right:0;bottom:0;top:auto;
+      display:flex;justify-content:space-between;align-items:flex-end;
+      padding:10px;margin:0;gap:0;pointer-events:none;z-index:5}
+    .touch .pad{flex:0 0 auto;width:auto;gap:8px;pointer-events:auto}
+    .touch button{width:78px;padding:13px 0;background:rgba(21,26,33,.82);
+      backdrop-filter:blur(2px)}
+  }
+
   @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 </head>
