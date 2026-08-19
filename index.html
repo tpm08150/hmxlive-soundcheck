@@ -114,8 +114,15 @@
     .stage{gap:0}
     .play{width:100%}
 
-    canvas{height:calc(100vh - 44px);height:calc(100dvh - 44px);
-      width:auto;max-width:100%;margin:0 auto}
+    /* Sized to sit BETWEEN the pads, not under them.
+       Height alone isn't enough here: this canvas is 2:1, so a height-fitted
+       one comes out 662px wide on an 812px screen and leaves only 75px of
+       margin — the pads need 142 and covered the bottom corners. Out Run is
+       16:9, ends up narrower, and never had the problem.
+       284px is the two pads; the second term is what the height allows. */
+    canvas{width:min(calc(100vw - 284px), calc((100vh - 44px) * 2));
+      width:min(calc(100vw - 284px), calc((100dvh - 44px) * 2));
+      height:auto;max-width:100%;margin:0 auto}
   }
 
   /* The pads only exist on a touch screen, so their sideways layout stays
@@ -126,7 +133,7 @@
       display:flex;justify-content:space-between;align-items:flex-end;
       padding:10px;margin:0;gap:0;pointer-events:none;z-index:5}
     .touch .pad{flex:0 0 auto;width:auto;gap:8px;pointer-events:auto}
-    .touch button{width:78px;padding:13px 0;background:rgba(21,26,33,.82);
+    .touch button{width:62px;padding:13px 0;background:rgba(21,26,33,.82);
       backdrop-filter:blur(2px)}
   }
 
