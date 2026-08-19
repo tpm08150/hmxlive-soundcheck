@@ -13,7 +13,9 @@
 
 import { getStore } from '@netlify/blobs';
 
-const KEY = 'board-v1';
+// board-v2: the board was reset when names became three-letter initials, so the
+// old twelve-character entries aren't mixed in with them.
+const KEY = 'board-v2';
 const MAX_ENTRIES = 10;
 const MAX_SCORE = 200000;   // 10 levels * (600 time + 750 lives + 500 clear) has plenty of headroom
 
@@ -29,7 +31,9 @@ const clean = (arr) =>
   (Array.isArray(arr) ? arr : [])
     .filter((e) => e && typeof e.score === 'number' && isFinite(e.score))
     .map((e) => ({
-      name: String(e.name ?? 'ANON').replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, 12) || 'ANON',
+      // Three initials, cabinet style. Enforced here as well as in the page,
+      // because the page is not the only thing that can POST.
+      name: String(e.name ?? 'AAA').replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || 'AAA',
       score: Math.max(0, Math.min(MAX_SCORE, Math.floor(e.score))),
       lvl: Math.max(0, Math.min(99, Math.floor(Number(e.lvl) || 0))),
       when: Number(e.when) || Date.now(),

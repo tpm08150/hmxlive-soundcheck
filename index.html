@@ -66,13 +66,34 @@
      flex-basis:100% makes it take a whole line: on a wide touch screen the
      canvas and the board still sit side by side and the pad drops beneath
      them, and .stage's own gap handles the spacing. */
-  .touch{display:none;gap:8px;flex-basis:100%;width:100%}
+  /* Two pads with a gap down the middle: walking under the left thumb, punch
+     and jump under the right. One row of four put an action under each thumb
+     and a direction out at each edge, which is the wrong way round for the way
+     a phone is held. */
+  .touch{display:none;gap:22px;flex-basis:100%;width:100%}
+  .touch .pad{display:flex;gap:8px;flex:1}
   .touch button{flex:1;padding:16px 0;background:var(--deck);color:var(--truss);
     border:2px solid var(--truss);font-family:'Bungee',cursive;
     font-size:clamp(10px,3vw,14px);white-space:nowrap;
     border-radius:2px;user-select:none;-webkit-user-select:none}
   .touch button:active{background:var(--tape);color:var(--house)}
   @media(hover:none) and (pointer:coarse){.touch{display:flex}}
+  /* The name used to be typed onto the canvas, which meant a phone could earn a
+     top-ten score and then have no way at all to enter a name — nothing brings
+     the keyboard up. A real input does, and focusing it is what opens it. */
+  .nameover{position:fixed;inset:0;background:rgba(10,12,16,.86);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:20}
+  .nameover[hidden]{display:none}
+  .namebox{background:var(--deck);border:2px solid var(--tape);padding:20px;
+    display:flex;flex-direction:column;gap:12px;width:min(420px,100%)}
+  .nametitle{font-family:'Bungee',cursive;font-size:13px;color:var(--tape);
+    letter-spacing:1px;text-align:center}
+  #nameIn{background:var(--house);border:2px solid var(--truss);color:var(--tape);
+    font-family:'Bungee',cursive;font-size:40px;text-align:center;padding:12px 8px;
+    letter-spacing:14px;text-indent:14px;text-transform:uppercase;width:100%}
+  #nameSave{padding:16px;background:var(--tape);color:var(--house);border:0;
+    font-family:'Bungee',cursive;font-size:15px;cursor:pointer}
+
   @media (prefers-reduced-motion:reduce){*{animation:none!important}}
 </style>
 </head>
@@ -94,8 +115,18 @@
     <div class="play">
       <canvas id="c" width="960" height="480"></canvas>
     </div>
+  <div class="nameover" id="nameOver" hidden>
+    <form class="namebox" id="nameForm">
+      <p class="nametitle">TOP 10 — ENTER YOUR INITIALS</p>
+      <input id="nameIn" maxlength="3" autocomplete="off" autocapitalize="characters"
+             autocorrect="off" spellcheck="false" inputmode="text">
+      <button type="submit" id="nameSave">SAVE</button>
+    </form>
+  </div>
+
   <div class="touch">
-    <button id="bL">◀</button><button id="bX">PUNCH</button><button id="bJ">JUMP</button><button id="bR">▶</button>
+    <div class="pad"><button id="bL">◀</button><button id="bR">▶</button></div>
+    <div class="pad"><button id="bX">PUNCH</button><button id="bJ">JUMP</button></div>
   </div>
     <aside class="side">
       <h2>TOP 10</h2>
@@ -125,23 +156,39 @@
 const c=document.getElementById('c'),x=c.getContext('2d');
 const W=960,H=480,G=0.22;          // lower gravity = higher, slower arc
 const JUMP=8.9;
+
+/* ── name entry ───────────────────────────────────────────────────
+   Three initials, the way a cabinet does it, and a real input so a phone can
+   reach it at all. Focusing the field is what opens the keyboard.
+   ───────────────────────────────────────────────────────────────── */
+const nameOver=document.getElementById('nameOver');
+const nameIn=document.getElementById('nameIn');
+const LAST_NAME='hmxlive:soundcheck:name';
+const lastName=()=>{try{return localStorage.getItem(LAST_NAME)||'';}catch(e){return '';}};
+
+function showNameEntry(){
+  nameIn.value=lastName();
+  nameOver.hidden=false;
+  // iOS ignores focus() outside a user gesture unless it is deferred a frame.
+  setTimeout(()=>{try{nameIn.focus();nameIn.select();}catch(e){}},60);
+}
+function hideNameEntry(){nameOver.hidden=true;try{nameIn.blur();}catch(e){}}
+
+document.getElementById('nameForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const nm=(nameIn.value.trim()||'AAA').toUpperCase().slice(0,3);
+  try{localStorage.setItem(LAST_NAME,nm);}catch(err){}
+  nameBuf=nm;
+  hideNameEntry();
+  boardSave({name:nm,score:score,lvl:lvl+1,when:Date.now()}).then(sideRender);
+});
+
 const K={};
 addEventListener('keydown',e=>{
-  // Name entry swallows the keyboard — otherwise typing "SAM" would jump
-  // and walk the player around behind the dialog.
-  if(boardState==='entry'){
-    e.preventDefault();
-    if(e.key==='Backspace'){nameBuf=nameBuf.slice(0,-1);return;}
-    if(e.key==='Enter'){
-      const nm=(nameBuf.trim()||'ANON').slice(0,12);
-      boardSave({name:nm,score:score,lvl:lvl+1,when:Date.now()}).then(sideRender);
-      return;
-    }
-    if(e.key&&e.key.length===1&&nameBuf.length<12&&/[A-Za-z0-9 ._-]/.test(e.key)){
-      nameBuf+=e.key.toUpperCase();
-    }
-    return;
-  }
+  // Name entry is the HTML overlay, not the canvas — see showNameEntry(). The
+  // keyboard still has to be swallowed while it is up, or typing "SAM" walks
+  // and jumps the player around behind the dialog.
+  if(boardState==='entry') return;
   K[e.code]=1;
   musicStart();
   if(e.code==='KeyM'){musicToggle();return;}
@@ -722,7 +769,7 @@ const canFetch=()=>typeof fetch==='function'&&typeof location!=='undefined'&&/^h
 
 const cleanBoard=a=>(Array.isArray(a)?a:[])
   .filter(e=>e&&typeof e.score==='number'&&isFinite(e.score))
-  .map(e=>({name:String(e.name||'ANON').slice(0,12),score:Math.floor(e.score),
+  .map(e=>({name:String(e.name||'AAA').slice(0,3),score:Math.floor(e.score),
             lvl:Number(e.lvl)||0,when:Number(e.when)||0}))
   .sort((a,b)=>b.score-a.score).slice(0,10);
 
@@ -998,9 +1045,9 @@ function hurt(){
   P.x=20;P.y=360;P.vx=P.vy=0;
   if(hp<=0){
     state='dead';beep(60,.9,'triangle',.14);
-    qualified=0;nameBuf='';
+    qualified=0;nameBuf='';hideNameEntry();
     boardLoad().then(()=>{                 // a run that dies still counts
-      if(madeTop10(score)){qualified=1;boardState='entry';}
+      if(madeTop10(score)){qualified=1;boardState='entry';showNameEntry();}
     });
   }
 }
@@ -1371,9 +1418,9 @@ function step(){
     state='win';riff();
     // On the final level the run is over — that's what the board records.
     if(lvl+1>=LEVELS.length){
-      qualified=0;nameBuf='';
+      qualified=0;nameBuf='';hideNameEntry();
       boardLoad().then(()=>{
-        if(madeTop10(score)){qualified=1;boardState='entry';}
+        if(madeTop10(score)){qualified=1;boardState='entry';showNameEntry();}
       });
     }
   }
@@ -2091,17 +2138,14 @@ function draw(){
     x.textAlign='left';
   }
   // ── name entry prompt ──
+  // The box itself is the HTML overlay; this is only the line underneath it on
+  // the canvas, for when the overlay has been dismissed or is still arriving.
   function drawEntry(cy){
     x.textAlign='center';
     x.fillStyle='#E8E337';x.font='bold 15px monospace';
-    x.fillText('TOP 10! ENTER YOUR NAME',W/2,cy);
-    const bw=200;
-    x.fillStyle='#22272F';x.fillRect(W/2-bw/2,cy+10,bw,26);
-    x.strokeStyle='#E8E337';x.lineWidth=2;x.strokeRect(W/2-bw/2,cy+10,bw,26);
-    x.fillStyle='#E8E337';x.font='bold 15px monospace';
-    x.fillText(nameBuf+(t%40<20?'_':' '),W/2,cy+29);
+    x.fillText('TOP 10!',W/2,cy);
     x.fillStyle='#8B94A3';x.font='10px monospace';
-    x.fillText(boardState==='saving'?'saving…':'TYPE, THEN ENTER',W/2,cy+50);
+    x.fillText(boardState==='saving'?'saving…':'ENTER YOUR INITIALS ABOVE',W/2,cy+18);
     x.textAlign='left';
   }
 
